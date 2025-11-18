@@ -117,30 +117,49 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
             const jsonString = JSON.stringify(dataToExport, null, 2);
             downloadBlob(new Blob([jsonString], { type: 'application/json' }), `relatorio_pedidos_${date}.json`);
         } else if (format === 'xlsx') {
-            const mainHeaders = ["ID Pedido", "Data", "Início", "Término", "Solicitante", "Setor Destino", "Status Pedido", "Status Conclusão", "Separador", "Conferente"];
-            const itemHeaders = ["Nº Item", "Código", "Descrição", "Localização", "Qtd. Pedida", "Unidade", "Status Item"];
-            const fullHeaders = [...mainHeaders, ...itemHeaders];
-            const aoa = [fullHeaders];
+            const data: (string | number)[][] = [];
+            const mainHeaders = ["ID Pedido", "Data", "Início", "Término", "Solicitante", "Setor Destino", "Status", "Separador", "Conferente"];
+            data.push(mainHeaders);
 
             selectedOrders.forEach(order => {
+                data.push([
+                    order.orderId,
+                    formatTimestamp(order.timestamp, 'date'),
+                    formatTimestamp(order.timestamp, 'time'),
+                    formatTimestamp(order.completionTimestamp, 'time'),
+                    order.requester,
+                    order.destinationSector,
+                    order.status === 'completed' ? (order.completionStatus === 'complete' ? 'Completo' : 'Incompleto') : 'Cancelado',
+                    order.separator || '',
+                    order.confirmer || ''
+                ]);
+
                 const isExpanded = expandedRows.has(getOrderKey(order));
-                const pickedItemsSet = new Set(order.pickedItems || []);
-                const baseRow = [order.orderId, formatTimestamp(order.timestamp, 'date'), formatTimestamp(order.timestamp, 'time'), formatTimestamp(order.completionTimestamp, 'time'), order.requester, order.destinationSector, order.status, order.completionStatus || 'N/A', order.separator || '', order.confirmer || ''];
-                
                 if (isExpanded && order.items.length > 0) {
-                    order.items.forEach((item, index) => {
-                        const itemRow = [item.itemNo, item.code, item.description, item.location, item.quantityOrdered, item.unit, pickedItemsSet.has(item.itemNo) ? 'Separado' : 'Pendente'];
-                        // For the first item, print the main order info. For subsequent items, leave main info blank for structure.
-                        aoa.push(index === 0 ? [...baseRow, ...itemRow] : [...Array(mainHeaders.length).fill(''), ...itemRow]);
+                    data.push(['', 'Nº Item', 'Código', 'Descrição', 'Localização', 'Qtd. Pedida', 'Unidade', 'Status Item']);
+                    const pickedItemsSet = new Set(order.pickedItems || []);
+                    
+                    order.items.forEach(item => {
+                        data.push([
+                            '',
+                            item.itemNo,
+                            item.code,
+                            item.description,
+                            item.location,
+                            item.quantityOrdered,
+                            item.unit,
+                            pickedItemsSet.has(item.itemNo) ? 'Separado' : 'Pendente'
+                        ]);
                     });
-                } else {
-                    aoa.push([...baseRow, ...Array(itemHeaders.length).fill('')]);
+                    data.push([]); // Blank row for spacing
                 }
             });
 
-            const worksheet = XLSX.utils.aoa_to_sheet(aoa);
-            // Optional: set column widths
-            worksheet['!cols'] = [ { wch: 15 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 15 }, { wch: 40 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 12 } ];
+            const worksheet = XLSX.utils.aoa_to_sheet(data);
+            worksheet['!cols'] = [
+                { wch: 15 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 20 },
+                { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 20 }
+            ];
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Relatório de Pedidos");
             XLSX.writeFile(workbook, `relatorio_pedidos_${date}.xlsx`);

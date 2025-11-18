@@ -4,16 +4,17 @@ import { User } from '../types';
 interface UserManagementProps {
     users: User[];
     setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+    currentUser: User;
 }
 
-const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers }) => {
+const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, currentUser: loggedInUser }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
     const [userName, setUserName] = useState('');
     const [userRole, setUserRole] = useState<'separator' | 'confirmer'>('separator');
 
     const handleOpenModal = (user: User | null = null) => {
-        setCurrentUser(user);
+        setEditingUser(user);
         setUserName(user ? user.name : '');
         setUserRole(user ? user.role : 'separator');
         setIsModalOpen(true);
@@ -21,7 +22,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers }) => {
 
     const handleCloseModal = () => {
         setIsModalOpen(false);
-        setCurrentUser(null);
+        setEditingUser(null);
         setUserName('');
         setUserRole('separator');
     };
@@ -31,9 +32,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers }) => {
             alert('O nome do usuário não pode estar em branco.');
             return;
         }
-        if (currentUser) {
+        if (editingUser) {
             // Edit user
-            setUsers(users.map(u => u.id === currentUser.id ? { ...u, name: userName, role: userRole } : u));
+            setUsers(users.map(u => u.id === editingUser.id ? { ...u, name: userName, role: userRole } : u));
         } else {
             // Add new user
             const newUser: User = {
@@ -47,8 +48,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers }) => {
     };
 
     const handleDeleteUser = (userId: string) => {
+        if (userId === loggedInUser.id) {
+            alert('Você não pode excluir o usuário que está logado no sistema.');
+            return;
+        }
         if (window.confirm('Tem certeza que deseja excluir este usuário?')) {
-            setUsers(users.filter(u => u.id !== userId));
+            setUsers(prevUsers => prevUsers.filter(u => u.id !== userId));
         }
     };
 
@@ -79,7 +84,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers }) => {
                                 <td className="px-6 py-4 capitalize">{user.role === 'separator' ? 'Separador' : 'Conferente'}</td>
                                 <td className="px-6 py-4 text-right space-x-2">
                                     <button onClick={() => handleOpenModal(user)} className="font-medium text-blue-400 hover:underline">Editar</button>
-                                    <button onClick={() => handleDeleteUser(user.id)} className="font-medium text-red-400 hover:underline">Excluir</button>
+                                    <button 
+                                        onClick={() => handleDeleteUser(user.id)} 
+                                        className="font-medium text-red-400 hover:underline disabled:text-gray-500 disabled:cursor-not-allowed disabled:hover:no-underline"
+                                        disabled={user.id === loggedInUser.id}
+                                    >
+                                        Excluir
+                                    </button>
                                 </td>
                             </tr>
                         ))}
@@ -90,7 +101,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers }) => {
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
                     <div className="bg-gray-800 rounded-lg shadow-2xl p-6 border border-gray-700 w-full max-w-md m-4">
-                        <h2 className="text-xl font-bold text-gray-100">{currentUser ? 'Editar Usuário' : 'Adicionar Usuário'}</h2>
+                        <h2 className="text-xl font-bold text-gray-100">{editingUser ? 'Editar Usuário' : 'Adicionar Usuário'}</h2>
                         <div className="mt-6 space-y-4">
                             <div>
                                 <label htmlFor="userName" className="block text-sm font-medium text-gray-400">Nome</label>

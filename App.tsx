@@ -130,7 +130,7 @@ const App: React.FC = () => {
             );
         }
         if (view === 'users') {
-            return <UserManagement users={users} setUsers={setUsers} />;
+            return <UserManagement users={users} setUsers={setUsers} currentUser={CURRENT_USER} />;
         }
         if (view === 'analytics') {
             return <AnalyticsDashboard history={orderHistory} />;

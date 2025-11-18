@@ -20,7 +20,7 @@ const MOCK_USERS: User[] = [
 const CURRENT_USER: User = { id: 'currentUser', name: 'João Silva', role: 'separator' };
 
 /**
- * Custom hook for persisting state to localStorage.
+ * Custom hook for persisting state to localStorage and syncing across tabs.
  * @param key The key to use in localStorage.
  * @param defaultValue The default value if nothing is found in localStorage.
  */
@@ -29,24 +29,43 @@ function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch
         try {
             const storedValue = localStorage.getItem(key);
             if (storedValue !== null) {
-                // The stored value will be a string, so we need to parse it
                 return JSON.parse(storedValue);
             }
         } catch (error) {
             console.error(`Error reading localStorage key “${key}”:`, error);
         }
-        // If no stored value or an error occurs, return the default value
         return defaultValue;
     });
 
     useEffect(() => {
         try {
-            // Convert the state to a string before saving
             localStorage.setItem(key, JSON.stringify(state));
         } catch (error) {
             console.error(`Error setting localStorage key “${key}”:`, error);
         }
     }, [key, state]);
+
+    // Listen for changes in other tabs to enable real-time sync
+    useEffect(() => {
+        const handleStorageChange = (event: StorageEvent) => {
+            if (event.key === key && event.newValue) {
+                try {
+                    setState(JSON.parse(event.newValue));
+                } catch (error) {
+                    console.error(`Error parsing stored value on storage event for key “${key}”:`, error);
+                }
+            } else if (event.key === key && !event.newValue) {
+                // Item was removed or cleared in another tab
+                 setState(defaultValue);
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, [key, defaultValue]);
 
     return [state, setState];
 }
@@ -140,44 +159,35 @@ const App: React.FC = () => {
         setSelectedHistoryOrder(null);
     };
     
-    const handleCancelOrdersFromHistory = (orderKeysToCancel: string[], reason: string) => {
-        setOrderHistory(prevHistory => 
-            prevHistory.map(order => {
-                const orderKey = `${order.orderId}-${order.timestamp}`;
-                if (orderKeysToCancel.includes(orderKey)) {
-                    return {
-                        ...order,
-                        status: 'canceled',
-                        cancellationReason: reason,
-                        completionTimestamp: new Date().toISOString(),
-                        confirmer: undefined, // Clear confirmer if it was a completed order being canceled
-                        completionStatus: undefined, // Clear completion status
-                    };
-                }
-                return order;
-            })
-        );
-    };
-
     const renderMainContent = () => {
         if (isLoading) {
             return (
-                <div className="flex flex-col items-center justify-center text-center p-10 bg-gray-800 rounded-lg shadow-2xl">
-                    <SpinnerIcon className="h-12 w-12 text-blue-500 mb-4" />
-                    <p className="text-lg font-medium text-gray-300">Analisando documento...</p>
-                    <p className="text-sm text-gray-400">Aguarde, a inteligência artificial está extraindo os dados do pedido.</p>
+                <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center p-10 bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 rounded-xl shadow-2xl animate-fade-in">
+                    <div className="relative">
+                        <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"></div>
+                        <SpinnerIcon className="relative h-16 w-16 text-blue-400 mb-6" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-white mb-2">Processando Documento</h3>
+                    <p className="text-gray-400 max-w-md mx-auto">A inteligência artificial está analisando a estrutura do seu arquivo para extrair os itens do pedido. Isso levará apenas alguns segundos.</p>
                 </div>
             );
         }
         if (error) {
             return (
-                <div className="bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg shadow-lg">
-                    <div className="flex items-center">
-                        <ErrorIcon className="h-6 w-6 text-red-500 mr-3" />
-                        <div>
-                            <p className="text-md font-semibold text-red-200">Ocorreu um erro</p>
-                            <p className="text-sm">{error}</p>
-                            <button onClick={resetToUpload} className="mt-2 text-sm font-semibold text-red-200 hover:underline">Tentar novamente</button>
+                <div className="bg-red-900/20 border border-red-500/50 backdrop-blur-md p-6 rounded-xl shadow-xl max-w-2xl mx-auto mt-10">
+                    <div className="flex items-start gap-4">
+                        <div className="bg-red-500/10 p-3 rounded-full">
+                             <ErrorIcon className="h-8 w-8 text-red-500" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-lg font-bold text-red-200 mb-1">Falha no Processamento</h3>
+                            <p className="text-red-300/80 mb-4">{error}</p>
+                            <button 
+                                onClick={resetToUpload} 
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-red-900/20"
+                            >
+                                Tentar Novamente
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -187,7 +197,7 @@ const App: React.FC = () => {
             return <UserManagement users={users} setUsers={setUsers} currentUser={CURRENT_USER} />;
         }
         if (view === 'analytics') {
-            return <AnalyticsDashboard history={orderHistory} onCancelOrders={handleCancelOrdersFromHistory} />;
+            return <AnalyticsDashboard history={orderHistory} />;
         }
         if (selectedHistoryOrder) {
             return <HistoryOrderDetail order={selectedHistoryOrder} onClose={handleCloseHistoryDetail} onContinuePicking={handleContinuePicking} />;
@@ -199,52 +209,71 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-900 text-gray-200 selection:bg-blue-500 selection:text-white">
-            <header className="bg-gray-900/70 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-700 no-print">
-                <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-                    <div className="flex items-center space-x-3">
-                        <LogoIcon className="h-8 w-auto text-blue-500" />
-                        <h1 className="text-2xl font-bold text-gray-100">Painel de Separação</h1>
+        <div className="min-h-screen bg-[#0B1120] text-gray-200 selection:bg-blue-500/30 selection:text-blue-200 font-sans">
+            {/* Background ambient glow */}
+            <div className="fixed inset-0 z-0 pointer-events-none">
+                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-900/10 rounded-full blur-[128px]"></div>
+                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-900/10 rounded-full blur-[128px]"></div>
+            </div>
+
+            <header className="sticky top-0 z-50 bg-[#0B1120]/80 backdrop-blur-xl border-b border-gray-800/60 supports-[backdrop-filter]:bg-[#0B1120]/60 no-print">
+                <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
+                    <div className="flex items-center gap-3 cursor-pointer" onClick={resetToUpload}>
+                        <div className="bg-blue-500/10 p-1.5 rounded-lg">
+                            <LogoIcon className="h-6 w-6 text-blue-500" />
+                        </div>
+                        <h1 className="text-xl font-bold tracking-tight text-white">
+                            Logi<span className="text-blue-500">Track</span>
+                        </h1>
                     </div>
-                     <div className="flex items-center gap-4">
+                    
+                     <div className="flex items-center gap-3">
                         <button
                             onClick={() => setView('users')}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-700/50 text-gray-300 font-semibold rounded-md border border-gray-600 hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500 transition-colors"
+                            className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 border border-transparent
+                                ${view === 'users' 
+                                    ? 'bg-gray-800 text-white border-gray-700' 
+                                    : 'text-gray-400 hover:text-white hover:bg-gray-800/50'}`}
                         >
-                            <UserGroupIcon className="h-5 w-5" />
-                            Gerenciar Usuários
+                            <UserGroupIcon className="h-4 w-4" />
+                            <span className="hidden sm:inline">Usuários</span>
                         </button>
+
                         {orderHistory.length > 0 && (
                             <button
                                 onClick={() => setView(view === 'analytics' ? 'dashboard' : 'analytics')}
-                                className="flex items-center gap-2 px-4 py-2 bg-gray-700/50 text-gray-300 font-semibold rounded-md border border-gray-600 hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500 transition-colors"
+                                className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 border border-transparent
+                                    ${view === 'analytics'
+                                        ? 'bg-gray-800 text-white border-gray-700' 
+                                        : 'text-gray-400 hover:text-white hover:bg-gray-800/50'}`}
                             >
-                                <ChartBarIcon className="h-5 w-5" />
-                                {view === 'analytics' ? 'Voltar ao Painel' : 'Análises'}
+                                <ChartBarIcon className="h-4 w-4" />
+                                <span className="hidden sm:inline">{view === 'analytics' ? 'Voltar' : 'Relatórios'}</span>
                             </button>
                         )}
+                        
                         {(currentOrder || selectedHistoryOrder || view !== 'dashboard') && (
                             <button
                                 onClick={resetToUpload}
-                                className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500 transition-colors"
+                                className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-blue-900/20 transition-all hover:shadow-blue-500/20 hover:-translate-y-0.5 active:translate-y-0"
                             >
-                                Carregar Novo Pedido
+                                Novo Pedido
                             </button>
                         )}
                     </div>
                 </div>
             </header>
             
-            <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
-                <div className="flex flex-col lg:flex-row gap-8">
-                    <aside className={`lg:w-1/4 xl:w-1/5 no-print ${view !== 'dashboard' && 'hidden'}`}>
+            <div className="relative z-10 max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
+                <div className="flex flex-col lg:flex-row gap-6 xl:gap-8">
+                    <aside className={`lg:w-80 xl:w-96 flex-shrink-0 no-print ${view !== 'dashboard' && 'hidden lg:block'}`}>
                        <HistoryPanel 
                          history={orderHistory}
                          onSelectOrder={handleSelectHistoryOrder}
                          selectedOrderId={selectedHistoryOrder?.orderId}
                        />
                     </aside>
-                    <main className="flex-1">
+                    <main className="flex-1 min-w-0">
                        {renderMainContent()}
                     </main>
                 </div>

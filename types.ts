@@ -19,6 +19,7 @@ export interface Order {
   completionStatus?: 'complete' | 'incomplete';
   separator?: string;
   confirmer?: string;
+  cancellationReason?: string;
 }
 
 export interface User {

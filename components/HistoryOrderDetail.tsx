@@ -60,6 +60,14 @@ const HistoryOrderDetail: React.FC<HistoryOrderDetailProps> = ({ order, onClose,
                     </div>
                     <StatusBadge />
                 </div>
+
+                {order.status === 'canceled' && order.cancellationReason && (
+                    <div className="mb-6 bg-red-900/20 border border-red-800 p-4 rounded-lg">
+                        <h4 className="text-md font-semibold text-red-300 mb-1">Motivo do Cancelamento</h4>
+                        <p className="text-sm text-red-200 whitespace-pre-wrap">{order.cancellationReason}</p>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
                         <h3 className="text-sm font-medium text-gray-400">Solicitante</h3>

@@ -18,15 +18,51 @@ const MOCK_USERS: User[] = [
 ];
 
 const CURRENT_USER: User = { id: 'currentUser', name: 'João Silva', role: 'separator' };
+const APP_STATE_KEY = 'orderSeparationAppState';
+
+const getInitialState = () => {
+    try {
+        const savedState = localStorage.getItem(APP_STATE_KEY);
+        if (savedState) {
+            const parsedState = JSON.parse(savedState);
+            // Basic validation to ensure the loaded data has the expected structure
+            if (parsedState.users && parsedState.orderHistory) {
+                return parsedState;
+            }
+        }
+    } catch (error) {
+        console.error("Failed to load state from localStorage", error);
+    }
+    // Return default state if nothing in localStorage or if it's invalid
+    return {
+        orderHistory: [],
+        users: MOCK_USERS,
+    };
+};
+
 
 const App: React.FC = () => {
     const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
     const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
-    const [orderHistory, setOrderHistory] = useState<Order[]>([]);
+    const [orderHistory, setOrderHistory] = useState<Order[]>(getInitialState().orderHistory);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [view, setView] = useState<'dashboard' | 'analytics' | 'users'>('dashboard');
-    const [users, setUsers] = useState<User[]>(MOCK_USERS);
+    const [users, setUsers] = useState<User[]>(getInitialState().users);
+    
+    // Effect for saving state to localStorage
+    React.useEffect(() => {
+        try {
+            const stateToSave = {
+                orderHistory,
+                users,
+            };
+            localStorage.setItem(APP_STATE_KEY, JSON.stringify(stateToSave));
+        } catch (error) {
+            console.error("Failed to save state to localStorage", error);
+        }
+    }, [orderHistory, users]);
+
 
     const handleFileProcess = useCallback(async (file: File) => {
         setIsLoading(true);
@@ -105,6 +141,25 @@ const App: React.FC = () => {
         setSelectedHistoryOrder(null);
     };
     
+    const handleCancelOrdersFromHistory = (orderKeysToCancel: string[], reason: string) => {
+        setOrderHistory(prevHistory => 
+            prevHistory.map(order => {
+                const orderKey = `${order.orderId}-${order.timestamp}`;
+                if (orderKeysToCancel.includes(orderKey)) {
+                    return {
+                        ...order,
+                        status: 'canceled',
+                        cancellationReason: reason,
+                        completionTimestamp: new Date().toISOString(),
+                        confirmer: undefined, // Clear confirmer if it was a completed order being canceled
+                        completionStatus: undefined, // Clear completion status
+                    };
+                }
+                return order;
+            })
+        );
+    };
+
     const renderMainContent = () => {
         if (isLoading) {
             return (
@@ -133,7 +188,7 @@ const App: React.FC = () => {
             return <UserManagement users={users} setUsers={setUsers} currentUser={CURRENT_USER} />;
         }
         if (view === 'analytics') {
-            return <AnalyticsDashboard history={orderHistory} />;
+            return <AnalyticsDashboard history={orderHistory} onCancelOrders={handleCancelOrdersFromHistory} />;
         }
         if (selectedHistoryOrder) {
             return <HistoryOrderDetail order={selectedHistoryOrder} onClose={handleCloseHistoryDetail} onContinuePicking={handleContinuePicking} />;

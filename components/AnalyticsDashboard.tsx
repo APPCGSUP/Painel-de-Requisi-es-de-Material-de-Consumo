@@ -11,6 +11,7 @@ const XLSX = window.XLSX;
 
 interface AnalyticsDashboardProps {
     history: Order[];
+    onCancelOrders: (orderKeys: string[], reason: string) => void;
 }
 
 interface StatCardProps {
@@ -33,12 +34,14 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, description, icon }) 
     </div>
 );
 
-const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
+const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history, onCancelOrders }) => {
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
     
     const [isDownloadModalOpen, setDownloadModalOpen] = useState(false);
     const [isPrintPreviewOpen, setPrintPreviewOpen] = useState(false);
+    const [isCancelModalOpen, setCancelModalOpen] = useState(false);
+    const [cancellationReason, setCancellationReason] = useState('');
     
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({
@@ -118,7 +121,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
             downloadBlob(new Blob([jsonString], { type: 'application/json' }), `relatorio_pedidos_${date}.json`);
         } else if (format === 'xlsx') {
             const data: (string | number)[][] = [];
-            const mainHeaders = ["ID Pedido", "Data", "Início", "Término", "Solicitante", "Setor Destino", "Status", "Separador", "Conferente"];
+            const mainHeaders = ["ID Pedido", "Data", "Início", "Término", "Solicitante", "Setor Destino", "Status", "Separador", "Conferente", "Motivo Cancelamento"];
             data.push(mainHeaders);
 
             selectedOrders.forEach(order => {
@@ -131,7 +134,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                     order.destinationSector,
                     order.status === 'completed' ? (order.completionStatus === 'complete' ? 'Completo' : 'Incompleto') : 'Cancelado',
                     order.separator || '',
-                    order.confirmer || ''
+                    order.confirmer || '',
+                    order.cancellationReason || ''
                 ]);
 
                 const isExpanded = expandedRows.has(getOrderKey(order));
@@ -158,7 +162,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
             const worksheet = XLSX.utils.aoa_to_sheet(data);
             worksheet['!cols'] = [
                 { wch: 15 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 20 },
-                { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 20 }
+                { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 30 }
             ];
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Relatório de Pedidos");
@@ -221,6 +225,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
             return newSet;
         });
     }
+    
+    const handleConfirmCancellation = () => {
+        if (!cancellationReason.trim()) {
+            alert('Por favor, insira um motivo para a exclusão.');
+            return;
+        }
+        onCancelOrders(Array.from(selectedRows), cancellationReason);
+        setCancelModalOpen(false);
+        setCancellationReason('');
+        setSelectedRows(new Set());
+    };
 
     const stats = useMemo(() => {
         const source = filteredHistory;
@@ -280,6 +295,16 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                     <td className="px-4 py-3">{order.confirmer || '-'}</td>
                     <td className="px-4 py-3 text-center font-mono">{order.pickedItems?.length ?? 0} / {order.items.length}</td>
                   </tr>
+                  {(forExport && order.status === 'canceled' && order.cancellationReason) && (
+                    <tr className="bg-gray-900/50">
+                        <td colSpan={8} className="p-2 border-t border-gray-700">
+                            <div className="bg-red-900/20 p-2 rounded-md">
+                                <strong className="text-red-300 text-xs">Motivo do Cancelamento:</strong>
+                                <p className="text-red-200 text-xs whitespace-pre-wrap">{order.cancellationReason}</p>
+                            </div>
+                        </td>
+                    </tr>
+                  )}
                   {(forExport && expandedRows.has(getOrderKey(order))) && order.items.length > 0 && (
                     <tr className="bg-gray-900/50"><td colSpan={8} className="p-0">
                         <div className="p-4"><h4 className="text-md font-semibold text-gray-300 mb-2">Itens do Pedido:</h4>
@@ -323,6 +348,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                     <h3 className="text-xl font-bold text-gray-100">Relatório de Pedidos</h3>
                     <div className="flex items-center gap-2">
                          <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2 px-3 py-2 bg-gray-600 text-white font-semibold rounded-md hover:bg-gray-700"><FilterIcon className="h-5 w-5" /><span>Filtros</span></button>
+                         <button 
+                            onClick={() => setCancelModalOpen(true)} 
+                            disabled={selectedRows.size === 0} 
+                            className="flex items-center gap-2 px-3 py-2 bg-red-600/80 text-white font-semibold rounded-md hover:bg-red-700 disabled:bg-red-900/50 disabled:text-red-400/70 disabled:border disabled:border-red-800 disabled:cursor-not-allowed"
+                        >
+                            <XCircleIcon className="h-5 w-5" />
+                            <span>Excluir</span>
+                        </button>
                          <button onClick={handlePrint} disabled={selectedRows.size === 0} className="flex items-center gap-2 px-3 py-2 bg-gray-600 text-white font-semibold rounded-md hover:bg-gray-700 disabled:bg-gray-500/50 disabled:cursor-not-allowed"><PrintIcon className="h-5 w-5" /><span>Imprimir</span></button>
                          <button onClick={() => setDownloadModalOpen(true)} disabled={selectedRows.size === 0} className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-blue-800/50 disabled:cursor-not-allowed"><DownloadIcon className="h-5 w-5" /><span>Download</span></button>
                     </div>
@@ -379,18 +412,36 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                                         <td className="px-4 py-3 text-center font-mono">{order.pickedItems?.length ?? 0} / {order.items.length}</td>
                                     </tr>
                                     {isExpanded && (
-                                        <tr className="bg-gray-900/50"><td colSpan={10} className="p-0">
-                                            <div className="p-4"><h4 className="text-md font-semibold text-gray-300 mb-2">Itens do Pedido:</h4>
-                                            <div className="max-h-60 overflow-y-auto pr-2"><table className="min-w-full text-xs">
-                                                <thead className="text-gray-400"><tr><th className="py-2 px-2 text-left w-12">Status</th><th className="py-2 px-2 text-left">Código</th><th className="py-2 px-2 text-left">Descrição</th><th className="py-2 px-2 text-center">Qtd.</th></tr></thead>
-                                                <tbody>{order.items.map(item => (
-                                                    <tr key={item.itemNo} className="border-t border-gray-700/50">
-                                                        <td className="py-2 px-2">{new Set(order.pickedItems || []).has(item.itemNo) ? <CheckCircleIcon className="h-4 w-4 text-green-500" title="Separado"/> : <XCircleIcon className="h-4 w-4 text-red-500" title="Pendente"/>}</td>
-                                                        <td className="py-2 px-2 font-mono">{item.code}</td><td className="py-2 px-2">{item.description}</td><td className="py-2 px-2 text-center font-bold">{item.quantityOrdered}</td>
-                                                    </tr>
-                                                ))}</tbody>
-                                            </table></div></div>
-                                        </td></tr>
+                                        <tr className="bg-gray-900/50">
+                                            <td colSpan={10} className="p-4">
+                                                <div className="space-y-4">
+                                                    {order.status === 'canceled' && order.cancellationReason && (
+                                                        <div className="bg-red-900/20 border border-red-800 p-3 rounded-lg">
+                                                            <h5 className="text-sm font-semibold text-red-300 mb-1">Motivo do Cancelamento/Exclusão</h5>
+                                                            <p className="text-sm text-red-200 whitespace-pre-wrap">{order.cancellationReason}</p>
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <h4 className="text-md font-semibold text-gray-300 mb-2">Itens do Pedido:</h4>
+                                                        <div className="max-h-60 overflow-y-auto pr-2">
+                                                            <table className="min-w-full text-xs">
+                                                                <thead className="text-gray-400"><tr><th className="py-2 px-2 text-left w-12">Status</th><th className="py-2 px-2 text-left">Código</th><th className="py-2 px-2 text-left">Descrição</th><th className="py-2 px-2 text-center">Qtd.</th></tr></thead>
+                                                                <tbody>
+                                                                    {order.items.length > 0 ? order.items.map(item => (
+                                                                        <tr key={item.itemNo} className="border-t border-gray-700/50">
+                                                                            <td className="py-2 px-2">{new Set(order.pickedItems || []).has(item.itemNo) ? <CheckCircleIcon className="h-4 w-4 text-green-500" title="Separado"/> : <XCircleIcon className="h-4 w-4 text-red-500" title="Pendente"/>}</td>
+                                                                            <td className="py-2 px-2 font-mono">{item.code}</td><td className="py-2 px-2">{item.description}</td><td className="py-2 px-2 text-center font-bold">{item.quantityOrdered}</td>
+                                                                        </tr>
+                                                                    )) : (
+                                                                        <tr><td colSpan={4} className="text-center py-4 text-gray-500 text-xs">Nenhum item neste pedido.</td></tr>
+                                                                    )}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
                                     )}
                                 </React.Fragment>
                             )})}
@@ -436,6 +487,30 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                            <h1 className="text-3xl font-bold mb-2">Relatório de Pedidos</h1>
                            <p className="text-gray-400 mb-6">Emitido em: {new Date().toLocaleString('pt-BR')}</p>
                            <ReportTableForExport forExport={true} />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isCancelModalOpen && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setCancelModalOpen(false)}>
+                    <div className="bg-gray-800 rounded-lg shadow-2xl p-6 border border-gray-700 w-full max-w-lg m-4" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold text-gray-100">Excluir Pedidos Selecionados</h2>
+                        <p className="text-gray-400 mt-2">Você está prestes a excluir {selectedRows.size} pedido(s). Esta ação os marcará como "Cancelado". Por favor, forneça uma observação.</p>
+                        <div className="mt-6">
+                            <label htmlFor="cancellationReason" className="block text-sm font-medium text-gray-400 mb-1">Motivo / Observação</label>
+                            <textarea
+                                id="cancellationReason"
+                                rows={4}
+                                value={cancellationReason}
+                                onChange={(e) => setCancellationReason(e.target.value)}
+                                className="block w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-gray-200 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Ex: Pedido duplicado, solicitação do cliente, etc."
+                            />
+                        </div>
+                        <div className="mt-8 flex justify-end gap-4">
+                            <button onClick={() => setCancelModalOpen(false)} className="px-4 py-2 bg-gray-600 text-white font-semibold rounded-md hover:bg-gray-700">Voltar</button>
+                            <button onClick={handleConfirmCancellation} className="px-4 py-2 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700">Confirmar Exclusão</button>
                         </div>
                     </div>
                 </div>

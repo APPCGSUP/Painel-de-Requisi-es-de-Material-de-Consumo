@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Order, User } from './types';
 import { extractOrderDataFromFile } from './services/geminiService';
 import FileUpload from './components/FileUpload';
@@ -18,52 +18,51 @@ const MOCK_USERS: User[] = [
 ];
 
 const CURRENT_USER: User = { id: 'currentUser', name: 'João Silva', role: 'separator' };
-const APP_STATE_KEY = 'orderSeparationAppState';
 
-const getInitialState = () => {
-    try {
-        const savedState = localStorage.getItem(APP_STATE_KEY);
-        if (savedState) {
-            const parsedState = JSON.parse(savedState);
-            // Basic validation to ensure the loaded data has the expected structure
-            if (parsedState.users && parsedState.orderHistory) {
-                return parsedState;
+/**
+ * Custom hook for persisting state to localStorage.
+ * @param key The key to use in localStorage.
+ * @param defaultValue The default value if nothing is found in localStorage.
+ */
+function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+    const [state, setState] = useState<T>(() => {
+        try {
+            const storedValue = localStorage.getItem(key);
+            if (storedValue !== null) {
+                // The stored value will be a string, so we need to parse it
+                return JSON.parse(storedValue);
             }
+        } catch (error) {
+            console.error(`Error reading localStorage key “${key}”:`, error);
         }
-    } catch (error) {
-        console.error("Failed to load state from localStorage", error);
-    }
-    // Return default state if nothing in localStorage or if it's invalid
-    return {
-        orderHistory: [],
-        users: MOCK_USERS,
-    };
-};
+        // If no stored value or an error occurs, return the default value
+        return defaultValue;
+    });
+
+    useEffect(() => {
+        try {
+            // Convert the state to a string before saving
+            localStorage.setItem(key, JSON.stringify(state));
+        } catch (error) {
+            console.error(`Error setting localStorage key “${key}”:`, error);
+        }
+    }, [key, state]);
+
+    return [state, setState];
+}
 
 
 const App: React.FC = () => {
     const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
     const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
-    const [orderHistory, setOrderHistory] = useState<Order[]>(getInitialState().orderHistory);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [view, setView] = useState<'dashboard' | 'analytics' | 'users'>('dashboard');
-    const [users, setUsers] = useState<User[]>(getInitialState().users);
+
+    // Use the custom hook for persistent state
+    const [orderHistory, setOrderHistory] = usePersistentState<Order[]>('orderHistory', []);
+    const [users, setUsers] = usePersistentState<User[]>('users', MOCK_USERS);
     
-    // Effect for saving state to localStorage
-    React.useEffect(() => {
-        try {
-            const stateToSave = {
-                orderHistory,
-                users,
-            };
-            localStorage.setItem(APP_STATE_KEY, JSON.stringify(stateToSave));
-        } catch (error) {
-            console.error("Failed to save state to localStorage", error);
-        }
-    }, [orderHistory, users]);
-
-
     const handleFileProcess = useCallback(async (file: File) => {
         setIsLoading(true);
         setError(null);

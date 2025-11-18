@@ -1,0 +1,5 @@
+{
+  "name": " Painel de Separação de Pedidos",
+  "description": "Um painel profissional para separação de pedidos com tema escuro e neon. Acompanhe o pedido atual, visualize o histórico e gerencie o status de conclusão ou cancelamento. Alimentado por IA para extrair dados de PDF, Excel ou CSV.",
+  "requestFramePermissions": []
+}

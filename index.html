@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Painel de Separação de Pedidos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+      @media print {
+        body {
+            background-color: #111827 !important; /* bg-gray-900 */
+        }
+        body * {
+          visibility: hidden;
+        }
+        .printable-section, .printable-section * {
+          visibility: visible;
+        }
+        .printable-section {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 1rem;
+          margin: 0;
+          color: #d1d5db !important; /* text-gray-300 */
+          background-color: #111827 !important; /* bg-gray-900 */
+           /* This is an important setting for browsers that try to save ink by not printing backgrounds */
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        .printable-section h1, .printable-section h2, .printable-section h3, .printable-section p, .printable-section span, .printable-section th, .printable-section td {
+            color: inherit !important;
+        }
+        .printable-section table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .printable-section th, .printable-section td {
+            border: 1px solid #374151 !important; /* border-gray-700 */
+            padding: 8px;
+            text-align: left;
+        }
+         .printable-section th {
+            background-color: #374151 !important; /* bg-gray-700 */
+        }
+        .no-print {
+          display: none !important;
+        }
+      }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1"
+  }
+}
+</script>
+</head>
+<body class="bg-gray-900">
+<div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

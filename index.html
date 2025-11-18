@@ -9,21 +9,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
       body {
         font-family: 'Inter', sans-serif;
       }
       @media print {
-        body {
-            background-color: #111827 !important; /* bg-gray-900 */
-        }
         body * {
           visibility: hidden;
         }
-        .printable-section, .printable-section * {
+        .print-preview-content, .print-preview-content * {
           visibility: visible;
         }
-        .printable-section {
+        .print-preview-content {
           position: absolute;
           left: 0;
           top: 0;
@@ -32,25 +32,24 @@
           box-shadow: none !important;
           padding: 1rem;
           margin: 0;
-          color: #d1d5db !important; /* text-gray-300 */
           background-color: #111827 !important; /* bg-gray-900 */
-           /* This is an important setting for browsers that try to save ink by not printing backgrounds */
+          color: #d1d5db !important; /* text-gray-300 */
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
-        .printable-section h1, .printable-section h2, .printable-section h3, .printable-section p, .printable-section span, .printable-section th, .printable-section td {
+         .print-preview-content h1, .print-preview-content h2, .print-preview-content h3, .print-preview-content p, .print-preview-content span, .print-preview-content th, .print-preview-content td {
             color: inherit !important;
         }
-        .printable-section table {
+        .print-preview-content table {
             width: 100%;
             border-collapse: collapse;
         }
-        .printable-section th, .printable-section td {
+        .print-preview-content th, .print-preview-content td {
             border: 1px solid #374151 !important; /* border-gray-700 */
             padding: 8px;
             text-align: left;
         }
-         .printable-section th {
+         .print-preview-content th {
             background-color: #374151 !important; /* bg-gray-700 */
         }
         .no-print {

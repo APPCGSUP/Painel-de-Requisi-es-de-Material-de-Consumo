@@ -22,6 +22,15 @@ const HistoryOrderDetail: React.FC<HistoryOrderDetailProps> = ({ order, onClose,
     const sortedItems = useMemo(() => {
         return [...order.items].sort((a, b) => a.location.localeCompare(b.location));
     }, [order.items]);
+
+    const formatTimestamp = (isoString?: string, type: 'date' | 'time' = 'date') => {
+        if (!isoString) return '-';
+        const date = new Date(isoString);
+        if (type === 'date') {
+            return date.toLocaleDateString('pt-BR');
+        }
+        return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    };
     
     const StatusBadge = () => {
         if (order.status === 'completed') {
@@ -51,7 +60,7 @@ const HistoryOrderDetail: React.FC<HistoryOrderDetailProps> = ({ order, onClose,
                     </div>
                     <StatusBadge />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
                         <h3 className="text-sm font-medium text-gray-400">Solicitante</h3>
                         <p className="mt-1 text-lg font-semibold text-gray-200">{order.requester}</p>
@@ -59,6 +68,28 @@ const HistoryOrderDetail: React.FC<HistoryOrderDetailProps> = ({ order, onClose,
                     <div>
                         <h3 className="text-sm font-medium text-gray-400">Setor de Destino</h3>
                         <p className="mt-1 text-lg font-semibold text-gray-200">{order.destinationSector}</p>
+                    </div>
+                     <div>
+                        <h3 className="text-sm font-medium text-gray-400">Data</h3>
+                        <p className="mt-1 text-lg font-semibold text-gray-200">{formatTimestamp(order.timestamp, 'date')}</p>
+                    </div>
+                     <div>
+                        <h3 className="text-sm font-medium text-gray-400">Início da Separação</h3>
+                        <p className="mt-1 text-lg font-semibold text-gray-200">{formatTimestamp(order.timestamp, 'time')}</p>
+                    </div>
+                     <div>
+                        <h3 className="text-sm font-medium text-gray-400">Término da Conferência</h3>
+                        <p className="mt-1 text-lg font-semibold text-gray-200">{formatTimestamp(order.completionTimestamp, 'time')}</p>
+                    </div>
+                    <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-gray-700">
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-400">Separador</h3>
+                            <p className="mt-1 text-lg font-semibold text-gray-200">{order.separator || '-'}</p>
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-medium text-gray-400">Conferente</h3>
+                            <p className="mt-1 text-lg font-semibold text-gray-200">{order.confirmer || '-'}</p>
+                        </div>
                     </div>
                 </div>
                 <div className="mt-6">

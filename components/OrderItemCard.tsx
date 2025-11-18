@@ -15,6 +15,7 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, isPicked, onToggleP
             bg-gray-800/50 rounded-lg shadow-lg border-l-4 transition-all duration-300 group
             ${!isReadOnly && 'hover:shadow-blue-500/10 hover:border-blue-400'}
             ${isPicked ? 'border-green-500 bg-gray-800' : 'border-blue-500'}
+            ${isReadOnly ? 'opacity-75' : ''}
         `}>
             <div className="p-5">
                 <div className="flex justify-between items-start">

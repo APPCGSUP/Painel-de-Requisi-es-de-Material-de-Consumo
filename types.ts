@@ -14,6 +14,15 @@ export interface Order {
   items: OrderItem[];
   status: 'picking' | 'completed' | 'canceled';
   timestamp: string;
+  completionTimestamp?: string; // Hora de término da conferência
   pickedItems?: string[];
   completionStatus?: 'complete' | 'incomplete';
+  separator?: string;
+  confirmer?: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  role: 'separator' | 'confirmer';
 }

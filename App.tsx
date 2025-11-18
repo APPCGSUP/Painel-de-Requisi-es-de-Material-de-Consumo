@@ -1,12 +1,23 @@
 import React, { useState, useCallback } from 'react';
-import { Order } from './types';
+import { Order, User } from './types';
 import { extractOrderDataFromFile } from './services/geminiService';
 import FileUpload from './components/FileUpload';
 import OrderDashboard from './components/OrderDashboard';
 import HistoryPanel from './components/HistoryPanel';
 import HistoryOrderDetail from './components/HistoryOrderDetail';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
-import { LogoIcon, ErrorIcon, SpinnerIcon, ChartBarIcon } from './components/Icons';
+import UserManagement from './components/UserManagement';
+import { LogoIcon, ErrorIcon, SpinnerIcon, ChartBarIcon, UserGroupIcon } from './components/Icons';
+
+const MOCK_USERS: User[] = [
+    { id: 'user1', name: 'Ana Costa', role: 'confirmer' },
+    { id: 'user2', name: 'Bruno Lima', role: 'confirmer' },
+    { id: 'user3', name: 'Carlos Dias', role: 'separator' },
+    { id: 'user4', name: 'Fernanda Souza', role: 'confirmer' },
+    { id: 'currentUser', name: 'João Silva', role: 'separator' },
+];
+
+const CURRENT_USER: User = { id: 'currentUser', name: 'João Silva', role: 'separator' };
 
 const App: React.FC = () => {
     const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
@@ -14,15 +25,15 @@ const App: React.FC = () => {
     const [orderHistory, setOrderHistory] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const [showAnalytics, setShowAnalytics] = useState<boolean>(false);
-
+    const [view, setView] = useState<'dashboard' | 'analytics' | 'users'>('dashboard');
+    const [users, setUsers] = useState<User[]>(MOCK_USERS);
 
     const handleFileProcess = useCallback(async (file: File) => {
         setIsLoading(true);
         setError(null);
         setCurrentOrder(null);
         setSelectedHistoryOrder(null);
-        setShowAnalytics(false);
+        setView('dashboard');
 
         try {
             const reader = new FileReader();
@@ -55,10 +66,10 @@ const App: React.FC = () => {
         setSelectedHistoryOrder(null);
         setError(null);
         setIsLoading(false);
-        setShowAnalytics(false);
+        setView('dashboard');
     };
 
-    const handleFinalizeOrder = (status: 'completed' | 'canceled', pickedItems: Set<string>) => {
+    const handleFinalizeOrder = (status: 'completed' | 'canceled', pickedItems: Set<string>, separator?: User, confirmer?: User) => {
         if (!currentOrder) return;
         
         let completionStatus: 'complete' | 'incomplete' | undefined = undefined;
@@ -66,11 +77,14 @@ const App: React.FC = () => {
             completionStatus = pickedItems.size === currentOrder.items.length ? 'complete' : 'incomplete';
         }
 
-        const finalizedOrder = {
+        const finalizedOrder: Order = {
             ...currentOrder,
             status,
             pickedItems: Array.from(pickedItems),
             completionStatus,
+            separator: status === 'completed' ? separator?.name : CURRENT_USER.name,
+            confirmer: status === 'completed' ? confirmer?.name : undefined,
+            completionTimestamp: new Date().toISOString(),
         };
         setOrderHistory(prev => [finalizedOrder, ...prev.slice(0, 19)]); // Keep history of last 20 orders
         setCurrentOrder(null);
@@ -78,7 +92,7 @@ const App: React.FC = () => {
     
     const handleSelectHistoryOrder = (order: Order) => {
         setSelectedHistoryOrder(order);
-        setShowAnalytics(false);
+        setView('dashboard');
     };
     
     const handleCloseHistoryDetail = () => {
@@ -86,19 +100,11 @@ const App: React.FC = () => {
     };
 
     const handleContinuePicking = (orderToContinue: Order) => {
-        // Define o pedido como ativo, alterando o status para 'picking'
         setCurrentOrder({ ...orderToContinue, status: 'picking' });
-        // Remove o pedido do histórico para evitar duplicatas. Ele será adicionado novamente ao ser finalizado.
         setOrderHistory(prev => prev.filter(o => !(o.orderId === orderToContinue.orderId && o.timestamp === orderToContinue.timestamp)));
-        // Fecha a visualização de detalhes do histórico
         setSelectedHistoryOrder(null);
     };
     
-    const toggleAnalytics = () => {
-        setShowAnalytics(prev => !prev);
-        setSelectedHistoryOrder(null);
-    }
-
     const renderMainContent = () => {
         if (isLoading) {
             return (
@@ -123,14 +129,17 @@ const App: React.FC = () => {
                 </div>
             );
         }
+        if (view === 'users') {
+            return <UserManagement users={users} setUsers={setUsers} />;
+        }
+        if (view === 'analytics') {
+            return <AnalyticsDashboard history={orderHistory} />;
+        }
         if (selectedHistoryOrder) {
             return <HistoryOrderDetail order={selectedHistoryOrder} onClose={handleCloseHistoryDetail} onContinuePicking={handleContinuePicking} />;
         }
-        if (showAnalytics) {
-            return <AnalyticsDashboard history={orderHistory} onClose={toggleAnalytics} />;
-        }
         if (currentOrder) {
-            return <OrderDashboard order={currentOrder} onFinalize={handleFinalizeOrder} />;
+            return <OrderDashboard order={currentOrder} onFinalize={handleFinalizeOrder} currentUser={CURRENT_USER} userList={users} />;
         }
         return <FileUpload onFileSelect={handleFileProcess} />;
     };
@@ -144,16 +153,23 @@ const App: React.FC = () => {
                         <h1 className="text-2xl font-bold text-gray-100">Painel de Separação</h1>
                     </div>
                      <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => setView('users')}
+                            className="flex items-center gap-2 px-4 py-2 bg-gray-700/50 text-gray-300 font-semibold rounded-md border border-gray-600 hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500 transition-colors"
+                        >
+                            <UserGroupIcon className="h-5 w-5" />
+                            Gerenciar Usuários
+                        </button>
                         {orderHistory.length > 0 && (
                             <button
-                                onClick={toggleAnalytics}
+                                onClick={() => setView(view === 'analytics' ? 'dashboard' : 'analytics')}
                                 className="flex items-center gap-2 px-4 py-2 bg-gray-700/50 text-gray-300 font-semibold rounded-md border border-gray-600 hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500 transition-colors"
                             >
                                 <ChartBarIcon className="h-5 w-5" />
-                                Análises
+                                {view === 'analytics' ? 'Voltar ao Painel' : 'Análises'}
                             </button>
                         )}
-                        {(currentOrder || selectedHistoryOrder || showAnalytics) && (
+                        {(currentOrder || selectedHistoryOrder || view !== 'dashboard') && (
                             <button
                                 onClick={resetToUpload}
                                 className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500 transition-colors"
@@ -167,7 +183,7 @@ const App: React.FC = () => {
             
             <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8">
                 <div className="flex flex-col lg:flex-row gap-8">
-                    <aside className="lg:w-1/4 xl:w-1/5 no-print">
+                    <aside className={`lg:w-1/4 xl:w-1/5 no-print ${view !== 'dashboard' && 'hidden'}`}>
                        <HistoryPanel 
                          history={orderHistory}
                          onSelectOrder={handleSelectHistoryOrder}

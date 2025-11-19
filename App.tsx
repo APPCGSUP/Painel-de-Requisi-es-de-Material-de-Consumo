@@ -14,10 +14,8 @@ const MOCK_USERS: User[] = [
     { id: 'user2', name: 'Bruno Lima', role: 'confirmer' },
     { id: 'user3', name: 'Carlos Dias', role: 'separator' },
     { id: 'user4', name: 'Fernanda Souza', role: 'confirmer' },
-    { id: 'currentUser', name: 'João Silva', role: 'separator' },
+    { id: 'user5', name: 'João Silva', role: 'separator' },
 ];
-
-const CURRENT_USER: User = { id: 'currentUser', name: 'João Silva', role: 'separator' };
 
 /**
  * Custom hook for persisting state to localStorage and syncing across tabs.
@@ -81,6 +79,7 @@ const App: React.FC = () => {
     // Use the custom hook for persistent state
     const [orderHistory, setOrderHistory] = usePersistentState<Order[]>('orderHistory', []);
     const [users, setUsers] = usePersistentState<User[]>('users', MOCK_USERS);
+    const [currentUser, setCurrentUser] = usePersistentState<User>('currentUser', MOCK_USERS[4]);
     
     const handleFileProcess = useCallback(async (file: File) => {
         setIsLoading(true);
@@ -136,7 +135,7 @@ const App: React.FC = () => {
             status,
             pickedItems: Array.from(pickedItems),
             completionStatus,
-            separator: status === 'completed' ? separator?.name : CURRENT_USER.name,
+            separator: status === 'completed' ? separator?.name : currentUser.name,
             confirmer: status === 'completed' ? confirmer?.name : undefined,
             completionTimestamp: new Date().toISOString(),
         };
@@ -194,7 +193,14 @@ const App: React.FC = () => {
             );
         }
         if (view === 'users') {
-            return <UserManagement users={users} setUsers={setUsers} currentUser={CURRENT_USER} />;
+            return (
+                <UserManagement 
+                    users={users} 
+                    setUsers={setUsers} 
+                    currentUser={currentUser} 
+                    onSelectUser={setCurrentUser} 
+                />
+            );
         }
         if (view === 'analytics') {
             return <AnalyticsDashboard history={orderHistory} />;
@@ -203,7 +209,7 @@ const App: React.FC = () => {
             return <HistoryOrderDetail order={selectedHistoryOrder} onClose={handleCloseHistoryDetail} onContinuePicking={handleContinuePicking} />;
         }
         if (currentOrder) {
-            return <OrderDashboard order={currentOrder} onFinalize={handleFinalizeOrder} currentUser={CURRENT_USER} userList={users} />;
+            return <OrderDashboard order={currentOrder} onFinalize={handleFinalizeOrder} currentUser={currentUser} userList={users} />;
         }
         return <FileUpload onFileSelect={handleFileProcess} />;
     };
@@ -228,6 +234,12 @@ const App: React.FC = () => {
                     </div>
                     
                      <div className="flex items-center gap-3">
+                        <div className="hidden md:flex items-center gap-2 mr-4 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                            <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                            <span className="text-xs text-gray-400">Logado como:</span>
+                            <span className="text-sm font-semibold text-white">{currentUser.name}</span>
+                        </div>
+
                         <button
                             onClick={() => setView('users')}
                             className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 border border-transparent

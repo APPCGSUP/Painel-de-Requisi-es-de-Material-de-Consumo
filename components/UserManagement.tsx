@@ -4,12 +4,13 @@ import { CheckCircleIcon } from './Icons';
 
 interface UserManagementProps {
     users: User[];
-    setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+    setUsers: (users: User[]) => void;
     currentUser: User;
     onSelectUser?: (user: User) => void;
+    onDeleteUser?: (userId: string) => void;
 }
 
-const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, currentUser, onSelectUser }) => {
+const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, currentUser, onSelectUser, onDeleteUser }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [userName, setUserName] = useState('');
@@ -34,9 +35,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
             alert('O nome do usuário não pode estar em branco.');
             return;
         }
+        
+        let updatedUsers: User[];
+
         if (editingUser) {
             // Edit user
-            setUsers(users.map(u => u.id === editingUser.id ? { ...u, name: userName, role: userRole } : u));
+            updatedUsers = users.map(u => u.id === editingUser.id ? { ...u, name: userName, role: userRole } : u);
             // Update current user if we edited ourselves
             if (currentUser.id === editingUser.id && onSelectUser) {
                 onSelectUser({ ...editingUser, name: userName, role: userRole });
@@ -48,18 +52,25 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
                 name: userName,
                 role: userRole,
             };
-            setUsers([...users, newUser]);
+            updatedUsers = [...users, newUser];
         }
+        
+        setUsers(updatedUsers);
         handleCloseModal();
     };
 
-    const handleDeleteUser = (userId: string) => {
+    const handleDeleteClick = (userId: string) => {
         if (userId === currentUser.id) {
             alert('Você não pode excluir o usuário que está logado no sistema.');
             return;
         }
-        if (window.confirm('Tem certeza que deseja excluir este usuário?')) {
-            setUsers(prevUsers => prevUsers.filter(u => u.id !== userId));
+        if (window.confirm('Tem certeza que deseja excluir este usuário? Esta ação pode não ser reversível.')) {
+            if (onDeleteUser) {
+                onDeleteUser(userId);
+            } else {
+                // Fallback to local state update if no delete handler
+                setUsers(users.filter(u => u.id !== userId));
+            }
         }
     };
 
@@ -117,7 +128,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
                                 <td className="px-6 py-4 text-right space-x-3">
                                     <button onClick={() => handleOpenModal(user)} className="font-medium text-blue-400 hover:text-blue-300 hover:underline">Editar</button>
                                     <button 
-                                        onClick={() => handleDeleteUser(user.id)} 
+                                        onClick={() => handleDeleteClick(user.id)} 
                                         className="font-medium text-red-400 hover:text-red-300 hover:underline disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:no-underline"
                                         disabled={isCurrent}
                                     >

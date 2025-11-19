@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useRef } from 'react';
 import { Order } from '../types';
 import { ChartBarIcon, CheckCircleIcon, HistoryIcon, PrintIcon, DownloadIcon, FilterIcon, FileTextIcon, TableCellsIcon, CodeBracketIcon, PhotoIcon, XCircleIcon, ChevronRightIcon } from './Icons';
@@ -17,11 +18,11 @@ interface StatCardProps {
 const StatCard: React.FC<StatCardProps> = ({ title, value, description, icon, colorClass }) => (
     <div className="bg-[#1F2937] p-6 rounded-xl border border-gray-700/50 shadow-lg hover:border-gray-600 transition-colors relative overflow-hidden group">
         <div className={`absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity ${colorClass}`}>
-            {React.cloneElement(icon as React.ReactElement, { className: 'h-16 w-16' })}
+            {React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: 'h-16 w-16' })}
         </div>
         <div className="relative z-10">
             <div className={`inline-flex p-3 rounded-lg mb-4 ${colorClass} bg-opacity-10`}>
-                {React.cloneElement(icon as React.ReactElement, { className: `h-6 w-6 ${colorClass.replace('bg-', 'text-')}` })}
+                {React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: `h-6 w-6 ${colorClass.replace('bg-', 'text-')}` })}
             </div>
             <h3 className="text-3xl font-bold text-white mb-1">{value}</h3>
             <p className="text-sm font-medium text-gray-400 mb-1">{title}</p>
@@ -477,7 +478,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                             ].map(item => (
                                 <button key={item.format} onClick={() => handleDownload(item.format as any)} className={`group flex flex-col items-center justify-center gap-4 p-6 bg-gray-800/50 rounded-xl border border-gray-700 transition-all duration-300 hover:bg-gray-800 hover:-translate-y-1 ${item.color}`}>
                                     <div className="p-3 bg-gray-900 rounded-lg group-hover:bg-gray-700 transition-colors text-gray-300 group-hover:text-white">
-                                        {React.cloneElement(item.icon as React.ReactElement, { className: "h-8 w-8" })}
+                                        {React.cloneElement(item.icon as React.ReactElement<{ className?: string }>, { className: "h-8 w-8" })}
                                     </div>
                                     <span className="font-semibold text-sm text-gray-300 group-hover:text-white">{item.label}</span>
                                 </button>

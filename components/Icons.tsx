@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const LogoIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -50,8 +51,9 @@ export const ChartBarIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-export const ExclamationTriangleIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+export const ExclamationTriangleIcon = ({ title, ...rest }: React.SVGProps<SVGSVGElement> & { title?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...rest}>
+        {title && <title>{title}</title>}
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
     </svg>
 );
@@ -116,10 +118,6 @@ export const CheckBadgeIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-
-// FIX: Update component props to correctly accept a 'title' for accessibility.
-// The props type is extended to include an optional 'title' string, which is then
-// rendered as a <title> element inside the SVG, resolving the TypeScript errors.
 export const CheckCircleIcon = ({ title, ...rest }: React.SVGProps<SVGSVGElement> & { title?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...rest}>
     {title && <title>{title}</title>}
@@ -127,9 +125,6 @@ export const CheckCircleIcon = ({ title, ...rest }: React.SVGProps<SVGSVGElement
   </svg>
 );
 
-// FIX: Update component props to correctly accept a 'title' for accessibility.
-// The props type is extended to include an optional 'title' string, which is then
-// rendered as a <title> element inside the SVG, resolving the TypeScript errors.
 export const XCircleIcon = ({ title, ...rest }: React.SVGProps<SVGSVGElement> & { title?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...rest}>
     {title && <title>{title}</title>}

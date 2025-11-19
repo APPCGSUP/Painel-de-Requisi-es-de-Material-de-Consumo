@@ -18,9 +18,7 @@ const MOCK_USERS: User[] = [
 ];
 
 /**
- * Custom hook for persisting state to localStorage and syncing across tabs.
- * @param key The key to use in localStorage.
- * @param defaultValue The default value if nothing is found in localStorage.
+ * Hook for persistent local state
  */
 function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
     const [state, setState] = useState<T>(() => {
@@ -43,31 +41,8 @@ function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch
         }
     }, [key, state]);
 
-    // Listen for changes in other tabs to enable real-time sync
-    useEffect(() => {
-        const handleStorageChange = (event: StorageEvent) => {
-            if (event.key === key && event.newValue) {
-                try {
-                    setState(JSON.parse(event.newValue));
-                } catch (error) {
-                    console.error(`Error parsing stored value on storage event for key “${key}”:`, error);
-                }
-            } else if (event.key === key && !event.newValue) {
-                // Item was removed or cleared in another tab
-                 setState(defaultValue);
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, [key, defaultValue]);
-
     return [state, setState];
 }
-
 
 const App: React.FC = () => {
     const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
@@ -76,11 +51,11 @@ const App: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [view, setView] = useState<'dashboard' | 'analytics' | 'users'>('dashboard');
 
-    // Use the custom hook for persistent state
+    // Data state persisted in LocalStorage (Restored functionality)
     const [orderHistory, setOrderHistory] = usePersistentState<Order[]>('orderHistory', []);
     const [users, setUsers] = usePersistentState<User[]>('users', MOCK_USERS);
     const [currentUser, setCurrentUser] = usePersistentState<User>('currentUser', MOCK_USERS[4]);
-    
+
     const handleFileProcess = useCallback(async (file: File) => {
         setIsLoading(true);
         setError(null);
@@ -122,7 +97,7 @@ const App: React.FC = () => {
         setView('dashboard');
     };
 
-    const handleFinalizeOrder = (status: 'completed' | 'canceled', pickedItems: Set<string>, separator?: User, confirmer?: User) => {
+    const handleFinalizeOrder = async (status: 'completed' | 'canceled', pickedItems: Set<string>, separator?: User, confirmer?: User) => {
         if (!currentOrder) return;
         
         let completionStatus: 'complete' | 'incomplete' | undefined = undefined;
@@ -130,6 +105,7 @@ const App: React.FC = () => {
             completionStatus = pickedItems.size === currentOrder.items.length ? 'complete' : 'incomplete';
         }
 
+        const completionTimestamp = new Date().toISOString();
         const finalizedOrder: Order = {
             ...currentOrder,
             status,
@@ -137,11 +113,21 @@ const App: React.FC = () => {
             completionStatus,
             separator: status === 'completed' ? separator?.name : currentUser.name,
             confirmer: status === 'completed' ? confirmer?.name : undefined,
-            completionTimestamp: new Date().toISOString(),
+            completionTimestamp,
         };
-        setOrderHistory(prev => [finalizedOrder, ...prev.slice(0, 19)]); // Keep history of last 20 orders
+
+        // Save to LocalStorage via state
+        setOrderHistory(prev => [finalizedOrder, ...prev]);
         setCurrentOrder(null);
     };
+    
+    const handlePersistUsers = (updatedUsers: User[]) => {
+        setUsers(updatedUsers);
+    }
+
+    const handleDeleteUser = (userId: string) => {
+        setUsers(prev => prev.filter(u => u.id !== userId));
+    }
     
     const handleSelectHistoryOrder = (order: Order) => {
         setSelectedHistoryOrder(order);
@@ -154,7 +140,6 @@ const App: React.FC = () => {
 
     const handleContinuePicking = (orderToContinue: Order) => {
         setCurrentOrder({ ...orderToContinue, status: 'picking' });
-        setOrderHistory(prev => prev.filter(o => !(o.orderId === orderToContinue.orderId && o.timestamp === orderToContinue.timestamp)));
         setSelectedHistoryOrder(null);
     };
     
@@ -196,9 +181,10 @@ const App: React.FC = () => {
             return (
                 <UserManagement 
                     users={users} 
-                    setUsers={setUsers} 
+                    setUsers={handlePersistUsers} 
                     currentUser={currentUser} 
                     onSelectUser={setCurrentUser} 
+                    onDeleteUser={handleDeleteUser}
                 />
             );
         }
@@ -235,7 +221,7 @@ const App: React.FC = () => {
                     
                      <div className="flex items-center gap-3">
                         <div className="hidden md:flex items-center gap-2 mr-4 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                            <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                            <div className="h-2 w-2 rounded-full bg-green-500" title="Modo Local (Offline)"></div>
                             <span className="text-xs text-gray-400">Logado como:</span>
                             <span className="text-sm font-semibold text-white">{currentUser.name}</span>
                         </div>

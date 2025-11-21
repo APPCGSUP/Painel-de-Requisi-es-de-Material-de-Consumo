@@ -7,7 +7,7 @@ import HistoryPanel from './components/HistoryPanel';
 import HistoryOrderDetail from './components/HistoryOrderDetail';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import UserManagement from './components/UserManagement';
-import { LogoIcon, ErrorIcon, SpinnerIcon, ChartBarIcon, UserGroupIcon } from './components/Icons';
+import { LogoIcon, ErrorIcon, SpinnerIcon, ChartBarIcon, UserGroupIcon, ExclamationTriangleIcon, CheckCircleIcon, HistoryIcon } from './components/Icons';
 
 const MOCK_USERS: User[] = [
     { id: 'user1', name: 'Ana Costa', role: 'confirmer' },
@@ -50,8 +50,11 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [view, setView] = useState<'dashboard' | 'analytics' | 'users'>('dashboard');
+    
+    // State for duplicate detection
+    const [duplicateCandidate, setDuplicateCandidate] = useState<{ newOrder: Order, existingOrder: Order } | null>(null);
 
-    // Data state persisted in LocalStorage (Restored functionality)
+    // Data state persisted in LocalStorage
     const [orderHistory, setOrderHistory] = usePersistentState<Order[]>('orderHistory', []);
     const [users, setUsers] = usePersistentState<User[]>('users', MOCK_USERS);
     const [currentUser, setCurrentUser] = usePersistentState<User>('currentUser', MOCK_USERS[4]);
@@ -61,6 +64,7 @@ const App: React.FC = () => {
         setError(null);
         setCurrentOrder(null);
         setSelectedHistoryOrder(null);
+        setDuplicateCandidate(null);
         setView('dashboard');
 
         try {
@@ -70,11 +74,25 @@ const App: React.FC = () => {
                 try {
                     const base64File = (reader.result as string).split(',')[1];
                     const orderData = await extractOrderDataFromFile(base64File, file.type);
-                    setCurrentOrder({ ...orderData, status: 'picking', timestamp: new Date().toISOString() });
+                    
+                    // Check for duplicates in history
+                    const existingOrder = orderHistory.find(o => o.orderId === orderData.orderId);
+                    
+                    if (existingOrder) {
+                        // Pause and ask user
+                        setDuplicateCandidate({
+                            newOrder: { ...orderData, status: 'picking', timestamp: new Date().toISOString() },
+                            existingOrder: existingOrder
+                        });
+                        setIsLoading(false);
+                    } else {
+                        // No duplicate, proceed as normal
+                        setCurrentOrder({ ...orderData, status: 'picking', timestamp: new Date().toISOString() });
+                        setIsLoading(false);
+                    }
                 } catch (e) {
                     console.error(e);
                     setError('Falha ao processar o arquivo com a IA. Verifique o formato do arquivo e tente novamente.');
-                } finally {
                     setIsLoading(false);
                 }
             };
@@ -87,11 +105,26 @@ const App: React.FC = () => {
             setError('Ocorreu um erro inesperado.');
             setIsLoading(false);
         }
-    }, []);
+    }, [orderHistory]);
+
+    const handleConfirmDuplicateAction = (action: 'resume' | 'overwrite') => {
+        if (!duplicateCandidate) return;
+
+        if (action === 'resume') {
+            // Load the existing order from history
+            setCurrentOrder(duplicateCandidate.existingOrder);
+        } else {
+            // Use the new data (Warning: this creates a new entry with new timestamp usually, or we could overwrite)
+            // Here we treat it as a fresh start with new timestamp
+            setCurrentOrder(duplicateCandidate.newOrder);
+        }
+        setDuplicateCandidate(null);
+    };
 
     const resetToUpload = () => {
         setCurrentOrder(null);
         setSelectedHistoryOrder(null);
+        setDuplicateCandidate(null);
         setError(null);
         setIsLoading(false);
         setView('dashboard');
@@ -116,8 +149,21 @@ const App: React.FC = () => {
             completionTimestamp,
         };
 
-        // Save to LocalStorage via state
-        setOrderHistory(prev => [finalizedOrder, ...prev]);
+        // Save to LocalStorage via state (Update if exists, else prepend)
+        setOrderHistory(prev => {
+            const existingIndex = prev.findIndex(o => o.orderId === finalizedOrder.orderId && o.timestamp === finalizedOrder.timestamp);
+            
+            if (existingIndex >= 0) {
+                // Update existing entry
+                const updatedHistory = [...prev];
+                updatedHistory[existingIndex] = finalizedOrder;
+                return updatedHistory;
+            } else {
+                // Add new entry
+                return [finalizedOrder, ...prev];
+            }
+        });
+        
         setCurrentOrder(null);
     };
     
@@ -156,6 +202,53 @@ const App: React.FC = () => {
                 </div>
             );
         }
+
+        // Duplicate Warning Modal
+        if (duplicateCandidate) {
+            const { existingOrder } = duplicateCandidate;
+            const statusText = existingOrder.status === 'completed' 
+                ? (existingOrder.completionStatus === 'complete' ? 'Concluído' : 'Concluído Parcialmente') 
+                : (existingOrder.status === 'canceled' ? 'Cancelado' : 'Em Andamento');
+            
+            return (
+                <div className="flex flex-col items-center justify-center h-full min-h-[400px] animate-fade-in">
+                    <div className="bg-[#1F2937] p-8 rounded-xl border border-yellow-500/30 shadow-2xl max-w-md w-full text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-yellow-500"></div>
+                        <div className="w-16 h-16 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <ExclamationTriangleIcon className="h-8 w-8 text-yellow-500" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-white mb-2">Pedido Já Existente</h3>
+                        <p className="text-gray-400 mb-6">
+                            O pedido <span className="text-white font-mono font-bold">{existingOrder.orderId}</span> já foi importado anteriormente e está com status: <br/>
+                            <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm font-bold border ${
+                                existingOrder.status === 'completed' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
+                                existingOrder.status === 'canceled' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 
+                                'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                            }`}>
+                                {statusText}
+                            </span>
+                        </p>
+                        
+                        <div className="flex flex-col gap-3">
+                            <button 
+                                onClick={() => handleConfirmDuplicateAction('resume')}
+                                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 transition-colors"
+                            >
+                                <HistoryIcon className="h-5 w-5" />
+                                Continuar Existente
+                            </button>
+                            <button 
+                                onClick={resetToUpload}
+                                className="w-full py-3 px-4 bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium rounded-lg transition-colors"
+                            >
+                                Cancelar Importação
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         if (error) {
             return (
                 <div className="bg-red-900/20 border border-red-500/50 backdrop-blur-md p-6 rounded-xl shadow-xl max-w-2xl mx-auto mt-10">

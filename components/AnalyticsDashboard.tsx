@@ -133,6 +133,11 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
         });
     }, [history, filters]);
 
+    const paginatedHistory = useMemo(() => {
+        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+        return filteredHistory.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [filteredHistory, currentPage]);
+
     const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setCurrentPage(1);
         setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -238,11 +243,31 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
     }
 
     const handleToggleSelect = (orderKey: string) => {
-        setSelectedRows(prev => { const newSet = new Set(prev); if (newSet.has(orderKey)) newSet.delete(orderKey); else newSet.add(orderKey); return newSet; });
+        setSelectedRows(prev => { 
+            const newSet = new Set(prev); 
+            if (newSet.has(orderKey)) {
+                newSet.delete(orderKey); 
+            } else {
+                newSet.add(orderKey); 
+            }
+            return newSet; 
+        });
     };
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setSelectedRows(e.target.checked ? new Set(paginatedHistory.map(getOrderKey)) : new Set());
+        const isChecked = e.target.checked;
+        setSelectedRows(prev => {
+            const newSet = new Set(prev);
+            paginatedHistory.forEach(order => {
+                const key = getOrderKey(order);
+                if (isChecked) {
+                    newSet.add(key);
+                } else {
+                    newSet.delete(key);
+                }
+            });
+            return newSet;
+        });
     };
     
     const handleToggleExpand = (orderKey: string) => {
@@ -270,12 +295,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
         };
     }, [history]);
     
-    const paginatedHistory = useMemo(() => {
-        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-        return filteredHistory.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-    }, [filteredHistory, currentPage]);
-    
     const totalPages = Math.ceil(filteredHistory.length / ITEMS_PER_PAGE);
+    const isAllPageSelected = paginatedHistory.length > 0 && paginatedHistory.every(o => selectedRows.has(getOrderKey(o)));
 
     const ReportTableForExport = ({ forExport = false, highContrast = false }: { forExport?: boolean, highContrast?: boolean }) => {
         const ordersToRender = forExport ? filteredHistory.filter(order => selectedRows.has(getOrderKey(order))) : paginatedHistory;
@@ -379,7 +400,14 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                     <table className="min-w-full text-sm text-left text-gray-300">
                         <thead className="text-xs text-gray-400 uppercase bg-[#111827] border-b border-gray-700">
                             <tr>
-                                <th scope="col" className="p-4 w-12 text-center"><input type="checkbox" className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-offset-gray-800" onChange={handleSelectAll} checked={selectedRows.size === paginatedHistory.length && paginatedHistory.length > 0} /></th>
+                                <th scope="col" className="p-4 w-12 text-center">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-offset-gray-800 cursor-pointer" 
+                                        onChange={handleSelectAll} 
+                                        checked={isAllPageSelected} 
+                                    />
+                                </th>
                                 <th scope="col" className="px-6 py-4 font-semibold tracking-wider">Status</th>
                                 <th scope="col" className="px-6 py-4 font-semibold tracking-wider">Pedido</th>
                                 <th scope="col" className="px-6 py-4 font-semibold tracking-wider">Solicitante</th>
@@ -398,7 +426,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                                 return (
                                 <React.Fragment key={orderKey}>
                                     <tr className={`transition-colors ${isSelected ? 'bg-blue-900/10' : 'hover:bg-gray-800/50'} ${isExpanded ? 'bg-gray-800/80' : ''}`}>
-                                        <td className="p-4 text-center"><input type="checkbox" className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-offset-gray-800" checked={isSelected} onChange={() => handleToggleSelect(orderKey)} /></td>
+                                        <td className="p-4 text-center"><input type="checkbox" className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-offset-gray-800 cursor-pointer" checked={isSelected} onChange={() => handleToggleSelect(orderKey)} /></td>
                                         <td className="px-6 py-4"><StatusBadge order={order}/></td>
                                         <td className="px-6 py-4 font-mono font-medium text-white">{order.orderId}</td>
                                         <td className="px-6 py-4 text-gray-300">{order.requester}</td>

@@ -268,7 +268,7 @@ const App: React.FC = () => {
                        <HistoryPanel 
                          history={orderHistory}
                          onSelectOrder={handleSelectHistoryOrder}
-                         selectedOrderId={selectedHistoryOrder?.orderId}
+                         selectedOrder={selectedHistoryOrder}
                        />
                     </aside>
                     <main className="flex-1 min-w-0">

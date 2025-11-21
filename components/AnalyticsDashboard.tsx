@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useRef } from 'react';
 import { Order } from '../types';
 import { ChartBarIcon, CheckCircleIcon, HistoryIcon, PrintIcon, DownloadIcon, FilterIcon, FileTextIcon, TableCellsIcon, CodeBracketIcon, PhotoIcon, XCircleIcon, ChevronRightIcon } from './Icons';
@@ -60,23 +59,23 @@ const formatTimestamp = (isoString?: string, type: 'date' | 'time' | 'datetime' 
     return date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-const StatusBadge = ({ order }: { order: Order }) => {
+const StatusBadge = ({ order, highContrast = false }: { order: Order, highContrast?: boolean }) => {
     let className = 'px-2.5 py-1 text-xs font-bold rounded-md inline-flex items-center gap-1.5 ';
     let text = '';
     let icon = null;
 
     if (order.status === 'completed') {
         if (order.completionStatus === 'complete') {
-            className += 'bg-green-500/10 text-green-400 border border-green-500/20';
+            className += highContrast ? 'bg-white border border-black text-black' : 'bg-green-500/10 text-green-400 border border-green-500/20';
             text = 'Concluído';
             icon = <CheckCircleIcon className="w-3 h-3" />;
         } else {
-            className += 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20';
+            className += highContrast ? 'bg-white border border-black text-black' : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20';
             text = 'Parcial';
-            icon = <div className="w-1.5 h-1.5 rounded-full bg-yellow-400" />;
+            icon = <div className={`w-1.5 h-1.5 rounded-full ${highContrast ? 'bg-black' : 'bg-yellow-400'}`} />;
         }
     } else if (order.status === 'canceled') {
-        className += 'bg-red-500/10 text-red-400 border border-red-500/20';
+        className += highContrast ? 'bg-white border border-black text-black' : 'bg-red-500/10 text-red-400 border border-red-500/20';
         text = 'Cancelado';
         icon = <XCircleIcon className="w-3 h-3" />;
     }
@@ -104,6 +103,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
     const ITEMS_PER_PAGE = 10;
 
     const reportContentRef = useRef<HTMLDivElement>(null);
+    // New Ref for the high-contrast export
+    const exportContainerRef = useRef<HTMLDivElement>(null);
 
     const getOrderKey = (order: Order) => `${order.orderId}-${order.timestamp}`;
     
@@ -198,11 +199,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
             XLSX.writeFile(workbook, `relatorio_pedidos_${date}.xlsx`);
 
         } else if (format === 'pdf' || format === 'png') {
-            const elementToCapture = reportContentRef.current;
+            // USE THE EXPORT CONTAINER (White Background)
+            const elementToCapture = exportContainerRef.current;
+            
             if (elementToCapture) {
                 // @ts-ignore
                 const html2canvas = window.html2canvas;
-                const canvas = await html2canvas(elementToCapture, { backgroundColor: '#1f2937', scale: 2 });
+                const canvas = await html2canvas(elementToCapture, { 
+                    backgroundColor: '#ffffff', // Force white background
+                    scale: 2,
+                    logging: false
+                });
                 if (format === 'png') {
                     downloadDataUrl(canvas.toDataURL('image/png'), `relatorio_pedidos_${date}.png`);
                 } else {
@@ -270,44 +277,48 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
     
     const totalPages = Math.ceil(filteredHistory.length / ITEMS_PER_PAGE);
 
-    const ReportTableForExport = ({ forExport = false }: { forExport?: boolean }) => {
+    const ReportTableForExport = ({ forExport = false, highContrast = false }: { forExport?: boolean, highContrast?: boolean }) => {
         const ordersToRender = forExport ? filteredHistory.filter(order => selectedRows.has(getOrderKey(order))) : paginatedHistory;
+        const thClass = highContrast ? "px-4 py-3 border border-gray-400 text-black bg-gray-200" : "px-4 py-3";
+        const tdClass = highContrast ? "px-4 py-3 border border-gray-300 text-black" : "px-4 py-3";
+        const tableClass = highContrast ? "min-w-full text-sm text-left text-black bg-white border-collapse" : "min-w-full text-sm text-left text-gray-300 bg-gray-800";
+
         return (
-          <table className="min-w-full text-sm text-left text-gray-300 bg-gray-800">
-            <thead className="text-xs text-gray-400 uppercase bg-gray-700">
+          <table className={tableClass}>
+            <thead className={highContrast ? "text-xs uppercase text-black font-bold" : "text-xs text-gray-400 uppercase bg-gray-700"}>
               <tr>
-                <th scope="col" className="px-4 py-3">Status</th>
-                <th scope="col" className="px-4 py-3">Nº Pedido</th>
-                <th scope="col" className="px-4 py-3">Solicitante</th>
-                <th scope="col" className="px-4 py-3">Data Início</th>
-                <th scope="col" className="px-4 py-3">Data Término</th>
-                <th scope="col" className="px-4 py-3">Tempo Total</th>
-                <th scope="col" className="px-4 py-3">Separador</th>
-                <th scope="col" className="px-4 py-3">Conferente</th>
+                <th scope="col" className={thClass}>Status</th>
+                <th scope="col" className={thClass}>Nº Pedido</th>
+                <th scope="col" className={thClass}>Solicitante</th>
+                <th scope="col" className={thClass}>Data Início</th>
+                <th scope="col" className={thClass}>Data Término</th>
+                <th scope="col" className={thClass}>Tempo Total</th>
+                <th scope="col" className={thClass}>Separador</th>
+                <th scope="col" className={thClass}>Conferente</th>
               </tr>
             </thead>
             <tbody>
               {ordersToRender.map(order => (
                 <React.Fragment key={getOrderKey(order)}>
-                  <tr className="border-b border-gray-700">
-                    <td className="px-4 py-3"><StatusBadge order={order}/></td>
-                    <td className="px-4 py-3 font-medium text-blue-400">{order.orderId}</td>
-                    <td className="px-4 py-3">{order.requester}</td>
-                    <td className="px-4 py-3">{formatTimestamp(order.timestamp, 'datetime')}</td>
-                    <td className="px-4 py-3">{formatTimestamp(order.completionTimestamp, 'datetime')}</td>
-                    <td className="px-4 py-3">{formatDuration(order.timestamp, order.completionTimestamp)}</td>
-                    <td className="px-4 py-3">{order.separator || '-'}</td>
-                    <td className="px-4 py-3">{order.confirmer || '-'}</td>
+                  <tr className={highContrast ? "border-b border-gray-300" : "border-b border-gray-700"}>
+                    <td className={tdClass}><StatusBadge order={order} highContrast={highContrast}/></td>
+                    <td className={`${tdClass} ${highContrast ? 'font-bold' : 'font-medium text-blue-400'}`}>{order.orderId}</td>
+                    <td className={tdClass}>{order.requester}</td>
+                    <td className={tdClass}>{formatTimestamp(order.timestamp, 'datetime')}</td>
+                    <td className={tdClass}>{formatTimestamp(order.completionTimestamp, 'datetime')}</td>
+                    <td className={tdClass}>{formatDuration(order.timestamp, order.completionTimestamp)}</td>
+                    <td className={tdClass}>{order.separator || '-'}</td>
+                    <td className={tdClass}>{order.confirmer || '-'}</td>
                   </tr>
                   {(forExport && expandedRows.has(getOrderKey(order))) && order.items.length > 0 && (
-                    <tr className="bg-gray-900/50"><td colSpan={8} className="p-0">
-                        <div className="p-4"><h4 className="text-md font-semibold text-gray-300 mb-2">Itens do Pedido:</h4>
-                        <table className="min-w-full text-xs">
-                            <thead className="text-gray-400"><tr><th className="py-2 px-2 text-left w-12">Status</th><th className="py-2 px-2 text-left">Código</th><th className="py-2 px-2 text-left">Descrição</th><th className="py-2 px-2 text-center">Qtd.</th></tr></thead>
+                    <tr className={highContrast ? "bg-gray-50" : "bg-gray-900/50"}><td colSpan={8} className="p-0">
+                        <div className="p-4"><h4 className={`text-md font-semibold mb-2 ${highContrast ? 'text-black' : 'text-gray-300'}`}>Itens do Pedido:</h4>
+                        <table className={`min-w-full text-xs ${highContrast ? 'border border-gray-400' : ''}`}>
+                            <thead className={highContrast ? 'text-black bg-gray-200' : 'text-gray-400'}><tr><th className="py-2 px-2 text-left w-12 border border-gray-300">Status</th><th className="py-2 px-2 text-left border border-gray-300">Código</th><th className="py-2 px-2 text-left border border-gray-300">Descrição</th><th className="py-2 px-2 text-center border border-gray-300">Qtd.</th></tr></thead>
                             <tbody>{order.items.map(item => (
-                                <tr key={item.itemNo} className="border-t border-gray-700/50">
-                                    <td className="py-2 px-2">{new Set(order.pickedItems || []).has(item.itemNo) ? <CheckCircleIcon className="h-4 w-4 text-green-500" title="Separado"/> : <XCircleIcon className="h-4 w-4 text-red-500" title="Pendente"/>}</td>
-                                    <td className="py-2 px-2 font-mono">{item.code}</td><td className="py-2 px-2">{item.description}</td><td className="py-2 px-2 text-center font-bold">{item.quantityOrdered}</td>
+                                <tr key={item.itemNo} className={highContrast ? "border-t border-gray-300" : "border-t border-gray-700/50"}>
+                                    <td className="py-2 px-2 border border-gray-300">{new Set(order.pickedItems || []).has(item.itemNo) ? <CheckCircleIcon className={`h-4 w-4 ${highContrast ? 'text-black' : 'text-green-500'}`} title="Separado"/> : <XCircleIcon className={`h-4 w-4 ${highContrast ? 'text-black' : 'text-red-500'}`} title="Pendente"/>}</td>
+                                    <td className="py-2 px-2 font-mono border border-gray-300">{item.code}</td><td className="py-2 px-2 border border-gray-300">{item.description}</td><td className="py-2 px-2 text-center font-bold border border-gray-300">{item.quantityOrdered}</td>
                                 </tr>
                             ))}</tbody>
                         </table></div>
@@ -453,11 +464,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                 )}
             </div>
             
-            <div className="hidden">
-                <div ref={reportContentRef} className="p-8 bg-[#111827] text-white">
-                     <h1 className="text-3xl font-bold mb-2 text-white">Relatório de Expedição</h1>
-                     <p className="text-gray-400 mb-8 border-b border-gray-700 pb-4">Emitido em: {new Date().toLocaleString('pt-BR')}</p>
-                     <ReportTableForExport forExport={true} />
+            {/* Hidden container for PDF/Image export with High Contrast styles */}
+            <div style={{ position: 'fixed', left: '-9999px', top: '-9999px' }}>
+                <div ref={exportContainerRef} className="p-8 bg-white text-black" style={{ width: '1123px', minHeight: '794px' }}>
+                     <div className="flex justify-between border-b-2 border-black pb-4 mb-6">
+                        <h1 className="text-3xl font-bold text-black">Relatório de Expedição</h1>
+                        <div className="text-right">
+                            <p className="text-sm font-bold text-black">LogiTrack System</p>
+                            <p className="text-xs text-black">Emitido em: {new Date().toLocaleString('pt-BR')}</p>
+                        </div>
+                     </div>
+                     <ReportTableForExport forExport={true} highContrast={true} />
                 </div>
             </div>
             
@@ -471,10 +488,10 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                         
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             {[ 
-                                { format: 'pdf', icon: <FileTextIcon/>, label: 'PDF Document', color: 'hover:border-red-500 hover:text-red-400' }, 
-                                { format: 'xlsx', icon: <TableCellsIcon/>, label: 'Excel Spreadsheet', color: 'hover:border-green-500 hover:text-green-400' },
-                                { format: 'png', icon: <PhotoIcon/>, label: 'Image (PNG)', color: 'hover:border-purple-500 hover:text-purple-400' }, 
-                                { format: 'json', icon: <CodeBracketIcon/>, label: 'JSON Data', color: 'hover:border-yellow-500 hover:text-yellow-400' } 
+                                { format: 'pdf', icon: <FileTextIcon/>, label: 'PDF (Econômico)', color: 'hover:border-red-500 hover:text-red-400' }, 
+                                { format: 'xlsx', icon: <TableCellsIcon/>, label: 'Excel', color: 'hover:border-green-500 hover:text-green-400' },
+                                { format: 'png', icon: <PhotoIcon/>, label: 'Imagem (Econômica)', color: 'hover:border-purple-500 hover:text-purple-400' }, 
+                                { format: 'json', icon: <CodeBracketIcon/>, label: 'Dados JSON', color: 'hover:border-yellow-500 hover:text-yellow-400' } 
                             ].map(item => (
                                 <button key={item.format} onClick={() => handleDownload(item.format as any)} className={`group flex flex-col items-center justify-center gap-4 p-6 bg-gray-800/50 rounded-xl border border-gray-700 transition-all duration-300 hover:bg-gray-800 hover:-translate-y-1 ${item.color}`}>
                                     <div className="p-3 bg-gray-900 rounded-lg group-hover:bg-gray-700 transition-colors text-gray-300 group-hover:text-white">
@@ -511,7 +528,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history }) => {
                                </div>
                            </div>
                            <div className="text-black">
-                                <ReportTableForExport forExport={true} />
+                                <ReportTableForExport forExport={true} highContrast={true} />
                            </div>
                         </div>
                     </div>

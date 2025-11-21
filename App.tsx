@@ -2,6 +2,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Order, User } from './types';
 import { extractOrderDataFromFile } from './services/geminiService';
+import { supabaseService } from './services/supabaseService';
+import { isSupabaseConfigured } from './services/supabaseClient';
 import FileUpload from './components/FileUpload';
 import OrderDashboard from './components/OrderDashboard';
 import HistoryPanel from './components/HistoryPanel';
@@ -19,7 +21,7 @@ const MOCK_USERS: User[] = [
 ];
 
 /**
- * Hook for persistent local state
+ * Hook for persistent local state (Used now mainly for App Name and Preferences)
  */
 function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
     const [state, setState] = useState<T>(() => {
@@ -58,12 +60,69 @@ const App: React.FC = () => {
     // State for App Name Editing
     const [isEditingAppName, setIsEditingAppName] = useState(false);
 
-    // Data state persisted in LocalStorage
-    const [orderHistory, setOrderHistory] = usePersistentState<Order[]>('orderHistory', []);
-    const [incomingQueue, setIncomingQueue] = usePersistentState<Order[]>('incomingQueue', []);
-    const [users, setUsers] = usePersistentState<User[]>('users', MOCK_USERS);
+    // Data states - Now initialized empty, filled via Supabase or LocalStorage fallback
+    const [orderHistory, setOrderHistory] = useState<Order[]>([]);
+    const [incomingQueue, setIncomingQueue] = useState<Order[]>([]);
+    const [users, setUsers] = useState<User[]>(MOCK_USERS);
+
+    // Preferences
     const [currentUser, setCurrentUser] = usePersistentState<User>('currentUser', MOCK_USERS[4]);
     const [appName, setAppName] = usePersistentState<string>('appName', 'LogiTrack');
+
+    // Initialize Data from Supabase
+    useEffect(() => {
+        const loadData = async () => {
+            if (!isSupabaseConfigured()) {
+                // Fallback to LocalStorage if Supabase Key is missing
+                const storedHistory = localStorage.getItem('orderHistory');
+                const storedQueue = localStorage.getItem('incomingQueue');
+                const storedUsers = localStorage.getItem('users');
+                
+                if (storedHistory) setOrderHistory(JSON.parse(storedHistory));
+                if (storedQueue) setIncomingQueue(JSON.parse(storedQueue));
+                if (storedUsers) setUsers(JSON.parse(storedUsers));
+                return;
+            }
+
+            try {
+                setIsLoading(true);
+                const [fetchedOrders, fetchedUsers] = await Promise.all([
+                    supabaseService.getOrders(),
+                    supabaseService.getUsers()
+                ]);
+
+                if (fetchedUsers.length > 0) {
+                    setUsers(fetchedUsers);
+                }
+
+                // Separate History (Completed/Canceled) from Queue (Picking)
+                const history = fetchedOrders.filter(o => o.status === 'completed' || o.status === 'canceled');
+                const queue = fetchedOrders.filter(o => o.status === 'picking');
+
+                setOrderHistory(history);
+                setIncomingQueue(queue);
+
+            } catch (err) {
+                console.error("Falha ao carregar dados do Supabase", err);
+                setError("Erro ao conectar com o banco de dados.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadData();
+    }, []);
+
+    // Refresh helper
+    const refreshData = async () => {
+        if (!isSupabaseConfigured()) return; // Local state is updated manually in fallback mode
+        
+        const fetchedOrders = await supabaseService.getOrders();
+        const history = fetchedOrders.filter(o => o.status === 'completed' || o.status === 'canceled');
+        const queue = fetchedOrders.filter(o => o.status === 'picking');
+        setOrderHistory(history);
+        setIncomingQueue(queue);
+    };
 
     const handleFileProcess = useCallback(async (file: File) => {
         setIsLoading(true);
@@ -71,7 +130,6 @@ const App: React.FC = () => {
         setCurrentOrder(null);
         setSelectedHistoryOrder(null);
         setDuplicateCandidate(null);
-        // Do not force dashboard view immediately, user might stay on upload or current view
 
         try {
             const reader = new FileReader();
@@ -81,28 +139,35 @@ const App: React.FC = () => {
                     const base64File = (reader.result as string).split(',')[1];
                     const orderData = await extractOrderDataFromFile(base64File, file.type);
                     
-                    // 1. Check for duplicates in History
+                    // Checks against current in-memory state (which mirrors DB)
                     const existingInHistory = orderHistory.find(o => o.orderId === orderData.orderId);
-                    // 2. Check for duplicates in Queue
                     const existingInQueue = incomingQueue.find(o => o.orderId === orderData.orderId);
 
                     if (existingInHistory) {
-                        // Pause and ask user
                         setDuplicateCandidate({
                             newOrder: { ...orderData, status: 'picking', timestamp: new Date().toISOString() },
                             existingOrder: existingInHistory
                         });
                         setIsLoading(false);
                     } else if (existingInQueue) {
-                        // Just warn/error if it's already in queue waiting
                         setError(`O pedido ${orderData.orderId} já está na fila de espera.`);
                         setIsLoading(false);
                     } else {
-                        // Success: Add to Incoming Queue
                         const newOrder: Order = { ...orderData, status: 'picking', timestamp: new Date().toISOString() };
-                        setIncomingQueue(prev => [...prev, newOrder]);
+                        
+                        if (isSupabaseConfigured()) {
+                            await supabaseService.createOrder(newOrder);
+                            await refreshData();
+                        } else {
+                            // Local Fallback
+                            setIncomingQueue(prev => {
+                                const updated = [...prev, newOrder];
+                                localStorage.setItem('incomingQueue', JSON.stringify(updated));
+                                return updated;
+                            });
+                        }
+                        
                         setIsLoading(false);
-                        // Optional: Switch to dashboard to see the queue if not already there
                         setView('dashboard');
                     }
                 } catch (e) {
@@ -120,19 +185,30 @@ const App: React.FC = () => {
             setError('Ocorreu um erro inesperado.');
             setIsLoading(false);
         }
-    }, [orderHistory, incomingQueue, setIncomingQueue]);
+    }, [orderHistory, incomingQueue]);
 
-    const handleConfirmDuplicateAction = (action: 'resume' | 'overwrite') => {
+    const handleConfirmDuplicateAction = async (action: 'resume' | 'overwrite') => {
         if (!duplicateCandidate) return;
 
         if (action === 'resume') {
-            // Load the existing order from history
             setCurrentOrder(duplicateCandidate.existingOrder);
             setDuplicateCandidate(null);
         } else {
-            // Add to queue even if duplicate in history (Overwrite logic implies starting fresh)
             const newOrder = duplicateCandidate.newOrder;
-            setIncomingQueue(prev => [...prev, newOrder]);
+            
+            if (isSupabaseConfigured()) {
+                setIsLoading(true);
+                await supabaseService.createOrder(newOrder);
+                await refreshData();
+                setIsLoading(false);
+            } else {
+                setIncomingQueue(prev => {
+                    const updated = [...prev, newOrder];
+                    localStorage.setItem('incomingQueue', JSON.stringify(updated));
+                    return updated;
+                });
+            }
+
             setDuplicateCandidate(null);
             setView('dashboard');
         }
@@ -166,39 +242,84 @@ const App: React.FC = () => {
             completionTimestamp,
         };
 
-        // Save to LocalStorage via state (Update if exists, else prepend)
-        setOrderHistory(prev => {
-            const existingIndex = prev.findIndex(o => o.orderId === finalizedOrder.orderId && o.timestamp === finalizedOrder.timestamp);
-            
-            if (existingIndex >= 0) {
-                // Update existing entry
-                const updatedHistory = [...prev];
-                updatedHistory[existingIndex] = finalizedOrder;
-                return updatedHistory;
-            } else {
-                // Add new entry
-                return [finalizedOrder, ...prev];
+        if (isSupabaseConfigured()) {
+            setIsLoading(true);
+            try {
+                await supabaseService.updateOrder(finalizedOrder);
+                await refreshData();
+            } catch(e) {
+                setError("Erro ao salvar finalização do pedido.");
+            } finally {
+                setIsLoading(false);
             }
-        });
+        } else {
+            // Local Fallback
+            setOrderHistory(prev => {
+                const existingIndex = prev.findIndex(o => o.orderId === finalizedOrder.orderId && o.timestamp === finalizedOrder.timestamp);
+                let updatedHistory;
+                if (existingIndex >= 0) {
+                    updatedHistory = [...prev];
+                    updatedHistory[existingIndex] = finalizedOrder;
+                } else {
+                    updatedHistory = [finalizedOrder, ...prev];
+                }
+                localStorage.setItem('orderHistory', JSON.stringify(updatedHistory));
+                return updatedHistory;
+            });
+            // Remove from queue locally if it was there (though currentOrder usually implies it's active)
+            setIncomingQueue(prev => {
+                const updated = prev.filter(o => o.orderId !== finalizedOrder.orderId);
+                localStorage.setItem('incomingQueue', JSON.stringify(updated));
+                return updated;
+            });
+        }
         
         setCurrentOrder(null);
     };
     
     const handlePromoteOrder = (orderToPromote: Order) => {
-        // 1. Set as current
+        // Sets local viewing state only. 
+        // In a real multi-user realtime app, we would update status to 'in_progress' in DB.
+        // For this version, we just bring it to the "Active Stage" locally.
         setCurrentOrder(orderToPromote);
-        // 2. Remove from Queue
-        setIncomingQueue(prev => prev.filter(o => o.orderId !== orderToPromote.orderId));
-        // 3. Clear selection
         setSelectedHistoryOrder(null);
     };
     
-    const handlePersistUsers = (updatedUsers: User[]) => {
-        setUsers(updatedUsers);
+    const handlePersistUsers = async (updatedUsers: User[]) => {
+        // This handler is now slightly complex because UserManagement passes the whole array.
+        // We will optimize by just setting state locally for immediate UI feedback,
+        // but in a real app we should handle add/update per user event.
+        
+        // Since UserManagement component logic sends the whole list, let's just fetch fresh from DB if using Supabase,
+        // but UserManagement needs refactoring to call single saveUser.
+        // For now, we will assume UserManagement component calls this after local modification.
+        
+        // To support the existing UserManagement interface, we need to identify what changed,
+        // or simply iterate and upsert all (inefficient but works for small lists).
+        
+        setUsers(updatedUsers); // Optimistic update
+        
+        if (isSupabaseConfigured()) {
+            // Find the new or updated user? 
+            // For simplicity, we will save ALL users to ensure sync.
+            for (const u of updatedUsers) {
+                await supabaseService.saveUser(u);
+            }
+        } else {
+            localStorage.setItem('users', JSON.stringify(updatedUsers));
+        }
     }
 
-    const handleDeleteUser = (userId: string) => {
-        setUsers(prev => prev.filter(u => u.id !== userId));
+    const handleDeleteUser = async (userId: string) => {
+        if (isSupabaseConfigured()) {
+            await supabaseService.deleteUser(userId);
+            const freshUsers = await supabaseService.getUsers();
+            setUsers(freshUsers);
+        } else {
+            const newUsers = users.filter(u => u.id !== userId);
+            setUsers(newUsers);
+            localStorage.setItem('users', JSON.stringify(newUsers));
+        }
     }
     
     const handleSelectHistoryOrder = (order: Order) => {
@@ -213,21 +334,37 @@ const App: React.FC = () => {
     const handleContinuePicking = (orderToContinue: Order) => {
         setCurrentOrder({ ...orderToContinue, status: 'picking' });
         setSelectedHistoryOrder(null);
+        // In DB it stays 'completed' until finalized again? 
+        // Or should we update DB to 'picking'? 
+        // Let's keep it simple: It's a local "Reopen". When finalized again, it updates the record.
     };
     
-    const handleCancelHistoryOrder = (orderToCancel: Order) => {
-        setOrderHistory(prev => prev.map(o => {
-            if (o.orderId === orderToCancel.orderId && o.timestamp === orderToCancel.timestamp) {
-                return {
-                    ...o,
-                    status: 'canceled',
-                    completionStatus: undefined,
-                    cancellationReason: 'Cancelado manualmente via painel de histórico',
-                    completionTimestamp: new Date().toISOString()
-                };
-            }
-            return o;
-        }));
+    const handleCancelHistoryOrder = async (orderToCancel: Order) => {
+        const canceledOrder: Order = {
+            ...orderToCancel,
+            status: 'canceled',
+            completionStatus: undefined,
+            cancellationReason: 'Cancelado manualmente via painel de histórico',
+            completionTimestamp: new Date().toISOString()
+        };
+
+        if (isSupabaseConfigured()) {
+            setIsLoading(true);
+            await supabaseService.updateOrder(canceledOrder);
+            await refreshData();
+            setIsLoading(false);
+        } else {
+            setOrderHistory(prev => {
+                const updated = prev.map(o => {
+                    if (o.orderId === orderToCancel.orderId && o.timestamp === orderToCancel.timestamp) {
+                        return canceledOrder;
+                    }
+                    return o;
+                });
+                localStorage.setItem('orderHistory', JSON.stringify(updated));
+                return updated;
+            });
+        }
         setSelectedHistoryOrder(null);
     };
 
@@ -239,8 +376,8 @@ const App: React.FC = () => {
                         <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"></div>
                         <SpinnerIcon className="relative h-16 w-16 text-blue-400 mb-6" />
                     </div>
-                    <h3 className="text-2xl font-bold text-white mb-2">Processando Documento</h3>
-                    <p className="text-gray-400 max-w-md mx-auto">A inteligência artificial está analisando a estrutura do seu arquivo para extrair os itens do pedido. Isso levará apenas alguns segundos.</p>
+                    <h3 className="text-2xl font-bold text-white mb-2">Sincronizando Dados</h3>
+                    <p className="text-gray-400 max-w-md mx-auto">Processando informações com o servidor...</p>
                 </div>
             );
         }
@@ -305,13 +442,13 @@ const App: React.FC = () => {
                              <ErrorIcon className="h-8 w-8 text-red-500" />
                         </div>
                         <div className="flex-1">
-                            <h3 className="text-lg font-bold text-red-200 mb-1">Falha no Processamento</h3>
+                            <h3 className="text-lg font-bold text-red-200 mb-1">Erro</h3>
                             <p className="text-red-300/80 mb-4">{error}</p>
                             <button 
                                 onClick={resetToUpload} 
                                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-red-900/20"
                             >
-                                Tentar Novamente
+                                Voltar
                             </button>
                         </div>
                     </div>
@@ -395,7 +532,7 @@ const App: React.FC = () => {
                     
                      <div className="flex items-center gap-3">
                         <div className="hidden md:flex items-center gap-2 mr-4 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                            <div className="h-2 w-2 rounded-full bg-green-500" title="Modo Local (Offline)"></div>
+                            <div className={`h-2 w-2 rounded-full ${isSupabaseConfigured() ? 'bg-green-500' : 'bg-orange-500'}`} title={isSupabaseConfigured() ? "Online (Supabase)" : "Offline (Local)"}></div>
                             <span className="text-xs text-gray-400">Logado como:</span>
                             <span className="text-sm font-semibold text-white">{currentUser.name}</span>
                         </div>

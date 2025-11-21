@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { Order } from '../types';
 import OrderItemCard from './OrderItemCard';
@@ -8,9 +9,10 @@ interface HistoryOrderDetailProps {
     order: Order;
     onClose: () => void;
     onContinuePicking: (order: Order) => void;
+    onCancel: (order: Order) => void;
 }
 
-const HistoryOrderDetail: React.FC<HistoryOrderDetailProps> = ({ order, onClose, onContinuePicking }) => {
+const HistoryOrderDetail: React.FC<HistoryOrderDetailProps> = ({ order, onClose, onContinuePicking, onCancel }) => {
     
     const pickedItemsSet = useMemo(() => new Set(order.pickedItems || []), [order.pickedItems]);
 
@@ -49,7 +51,7 @@ const HistoryOrderDetail: React.FC<HistoryOrderDetailProps> = ({ order, onClose,
             </div>
         );
     }
-
+    
     return (
         <div className="space-y-6">
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
@@ -117,6 +119,7 @@ const HistoryOrderDetail: React.FC<HistoryOrderDetailProps> = ({ order, onClose,
                             Continuar Separação
                         </button>
                     )}
+                    
                     <button
                         onClick={onClose}
                         className="px-4 py-2 bg-gray-600 text-white font-semibold rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-gray-500 transition-colors"

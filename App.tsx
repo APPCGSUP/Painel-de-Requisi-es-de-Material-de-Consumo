@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Order, User } from './types';
 import { extractOrderDataFromFile } from './services/geminiService';
@@ -7,7 +8,7 @@ import HistoryPanel from './components/HistoryPanel';
 import HistoryOrderDetail from './components/HistoryOrderDetail';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import UserManagement from './components/UserManagement';
-import { LogoIcon, ErrorIcon, SpinnerIcon, ChartBarIcon, UserGroupIcon, ExclamationTriangleIcon, CheckCircleIcon, HistoryIcon } from './components/Icons';
+import { LogoIcon, ErrorIcon, SpinnerIcon, ChartBarIcon, UserGroupIcon, ExclamationTriangleIcon, CheckCircleIcon, HistoryIcon, PencilIcon } from './components/Icons';
 
 const MOCK_USERS: User[] = [
     { id: 'user1', name: 'Ana Costa', role: 'confirmer' },
@@ -53,11 +54,16 @@ const App: React.FC = () => {
     
     // State for duplicate detection
     const [duplicateCandidate, setDuplicateCandidate] = useState<{ newOrder: Order, existingOrder: Order } | null>(null);
+    
+    // State for App Name Editing
+    const [isEditingAppName, setIsEditingAppName] = useState(false);
 
     // Data state persisted in LocalStorage
     const [orderHistory, setOrderHistory] = usePersistentState<Order[]>('orderHistory', []);
+    const [incomingQueue, setIncomingQueue] = usePersistentState<Order[]>('incomingQueue', []);
     const [users, setUsers] = usePersistentState<User[]>('users', MOCK_USERS);
     const [currentUser, setCurrentUser] = usePersistentState<User>('currentUser', MOCK_USERS[4]);
+    const [appName, setAppName] = usePersistentState<string>('appName', 'LogiTrack');
 
     const handleFileProcess = useCallback(async (file: File) => {
         setIsLoading(true);
@@ -65,7 +71,7 @@ const App: React.FC = () => {
         setCurrentOrder(null);
         setSelectedHistoryOrder(null);
         setDuplicateCandidate(null);
-        setView('dashboard');
+        // Do not force dashboard view immediately, user might stay on upload or current view
 
         try {
             const reader = new FileReader();
@@ -75,20 +81,29 @@ const App: React.FC = () => {
                     const base64File = (reader.result as string).split(',')[1];
                     const orderData = await extractOrderDataFromFile(base64File, file.type);
                     
-                    // Check for duplicates in history
-                    const existingOrder = orderHistory.find(o => o.orderId === orderData.orderId);
-                    
-                    if (existingOrder) {
+                    // 1. Check for duplicates in History
+                    const existingInHistory = orderHistory.find(o => o.orderId === orderData.orderId);
+                    // 2. Check for duplicates in Queue
+                    const existingInQueue = incomingQueue.find(o => o.orderId === orderData.orderId);
+
+                    if (existingInHistory) {
                         // Pause and ask user
                         setDuplicateCandidate({
                             newOrder: { ...orderData, status: 'picking', timestamp: new Date().toISOString() },
-                            existingOrder: existingOrder
+                            existingOrder: existingInHistory
                         });
                         setIsLoading(false);
-                    } else {
-                        // No duplicate, proceed as normal
-                        setCurrentOrder({ ...orderData, status: 'picking', timestamp: new Date().toISOString() });
+                    } else if (existingInQueue) {
+                        // Just warn/error if it's already in queue waiting
+                        setError(`O pedido ${orderData.orderId} já está na fila de espera.`);
                         setIsLoading(false);
+                    } else {
+                        // Success: Add to Incoming Queue
+                        const newOrder: Order = { ...orderData, status: 'picking', timestamp: new Date().toISOString() };
+                        setIncomingQueue(prev => [...prev, newOrder]);
+                        setIsLoading(false);
+                        // Optional: Switch to dashboard to see the queue if not already there
+                        setView('dashboard');
                     }
                 } catch (e) {
                     console.error(e);
@@ -105,7 +120,7 @@ const App: React.FC = () => {
             setError('Ocorreu um erro inesperado.');
             setIsLoading(false);
         }
-    }, [orderHistory]);
+    }, [orderHistory, incomingQueue, setIncomingQueue]);
 
     const handleConfirmDuplicateAction = (action: 'resume' | 'overwrite') => {
         if (!duplicateCandidate) return;
@@ -113,12 +128,14 @@ const App: React.FC = () => {
         if (action === 'resume') {
             // Load the existing order from history
             setCurrentOrder(duplicateCandidate.existingOrder);
+            setDuplicateCandidate(null);
         } else {
-            // Use the new data (Warning: this creates a new entry with new timestamp usually, or we could overwrite)
-            // Here we treat it as a fresh start with new timestamp
-            setCurrentOrder(duplicateCandidate.newOrder);
+            // Add to queue even if duplicate in history (Overwrite logic implies starting fresh)
+            const newOrder = duplicateCandidate.newOrder;
+            setIncomingQueue(prev => [...prev, newOrder]);
+            setDuplicateCandidate(null);
+            setView('dashboard');
         }
-        setDuplicateCandidate(null);
     };
 
     const resetToUpload = () => {
@@ -167,6 +184,15 @@ const App: React.FC = () => {
         setCurrentOrder(null);
     };
     
+    const handlePromoteOrder = (orderToPromote: Order) => {
+        // 1. Set as current
+        setCurrentOrder(orderToPromote);
+        // 2. Remove from Queue
+        setIncomingQueue(prev => prev.filter(o => o.orderId !== orderToPromote.orderId));
+        // 3. Clear selection
+        setSelectedHistoryOrder(null);
+    };
+    
     const handlePersistUsers = (updatedUsers: User[]) => {
         setUsers(updatedUsers);
     }
@@ -189,6 +215,22 @@ const App: React.FC = () => {
         setSelectedHistoryOrder(null);
     };
     
+    const handleCancelHistoryOrder = (orderToCancel: Order) => {
+        setOrderHistory(prev => prev.map(o => {
+            if (o.orderId === orderToCancel.orderId && o.timestamp === orderToCancel.timestamp) {
+                return {
+                    ...o,
+                    status: 'canceled',
+                    completionStatus: undefined,
+                    cancellationReason: 'Cancelado manualmente via painel de histórico',
+                    completionTimestamp: new Date().toISOString()
+                };
+            }
+            return o;
+        }));
+        setSelectedHistoryOrder(null);
+    };
+
     const renderMainContent = () => {
         if (isLoading) {
             return (
@@ -238,10 +280,16 @@ const App: React.FC = () => {
                                 Continuar Existente
                             </button>
                             <button 
-                                onClick={resetToUpload}
+                                onClick={() => handleConfirmDuplicateAction('overwrite')}
                                 className="w-full py-3 px-4 bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium rounded-lg transition-colors"
                             >
-                                Cancelar Importação
+                                Importar como Novo (Fila)
+                            </button>
+                            <button 
+                                onClick={resetToUpload}
+                                className="w-full py-3 px-4 bg-gray-800 text-gray-400 text-sm hover:text-white transition-colors"
+                            >
+                                Cancelar
                             </button>
                         </div>
                     </div>
@@ -285,11 +333,18 @@ const App: React.FC = () => {
             return <AnalyticsDashboard history={orderHistory} />;
         }
         if (selectedHistoryOrder) {
-            return <HistoryOrderDetail order={selectedHistoryOrder} onClose={handleCloseHistoryDetail} onContinuePicking={handleContinuePicking} />;
+            return <HistoryOrderDetail 
+                order={selectedHistoryOrder} 
+                onClose={handleCloseHistoryDetail} 
+                onContinuePicking={handleContinuePicking}
+                onCancel={handleCancelHistoryOrder}
+            />;
         }
         if (currentOrder) {
             return <OrderDashboard order={currentOrder} onFinalize={handleFinalizeOrder} currentUser={currentUser} userList={users} />;
         }
+        
+        // Default view is upload
         return <FileUpload onFileSelect={handleFileProcess} />;
     };
 
@@ -303,13 +358,39 @@ const App: React.FC = () => {
 
             <header className="sticky top-0 z-50 bg-[#0B1120]/80 backdrop-blur-xl border-b border-gray-800/60 supports-[backdrop-filter]:bg-[#0B1120]/60 no-print">
                 <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
-                    <div className="flex items-center gap-3 cursor-pointer" onClick={resetToUpload}>
-                        <div className="bg-blue-500/10 p-1.5 rounded-lg">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-blue-500/10 p-1.5 rounded-lg cursor-pointer" onClick={resetToUpload}>
                             <LogoIcon className="h-6 w-6 text-blue-500" />
                         </div>
-                        <h1 className="text-xl font-bold tracking-tight text-white">
-                            Logi<span className="text-blue-500">Track</span>
-                        </h1>
+                        
+                        {isEditingAppName ? (
+                            <input 
+                                type="text"
+                                value={appName}
+                                onChange={(e) => setAppName(e.target.value)}
+                                onBlur={() => setIsEditingAppName(false)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') setIsEditingAppName(false);
+                                }}
+                                autoFocus
+                                className="bg-gray-800 text-white text-xl font-bold border border-blue-500 rounded px-2 py-0.5 w-48 outline-none"
+                            />
+                        ) : (
+                            <div 
+                                className="flex items-center gap-2 group cursor-pointer" 
+                                onClick={() => setIsEditingAppName(true)}
+                                title="Clique para editar o nome"
+                            >
+                                <h1 className="text-xl font-bold tracking-tight text-white">
+                                    {appName === 'LogiTrack' ? (
+                                        <>Logi<span className="text-blue-500">Track</span></>
+                                    ) : (
+                                        appName
+                                    )}
+                                </h1>
+                                <PencilIcon className="h-3 w-3 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                        )}
                     </div>
                     
                      <div className="flex items-center gap-3">
@@ -360,7 +441,9 @@ const App: React.FC = () => {
                     <aside className={`lg:w-80 xl:w-96 flex-shrink-0 no-print ${view !== 'dashboard' && 'hidden lg:block'}`}>
                        <HistoryPanel 
                          history={orderHistory}
+                         queue={incomingQueue}
                          onSelectOrder={handleSelectHistoryOrder}
+                         onPromoteOrder={handlePromoteOrder}
                          selectedOrder={selectedHistoryOrder}
                        />
                     </aside>

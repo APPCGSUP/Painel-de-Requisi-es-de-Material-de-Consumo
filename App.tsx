@@ -493,8 +493,8 @@ const App: React.FC = () => {
                 <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-900/10 rounded-full blur-[128px]"></div>
             </div>
 
-            <header className="sticky top-0 z-50 bg-[#0B1120]/80 backdrop-blur-xl border-b border-gray-800/60 supports-[backdrop-filter]:bg-[#0B1120]/60 no-print">
-                <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
+            <header className="sticky top-0 z-50 bg-[#0B1120]/80 backdrop-blur-xl border-b border-gray-800/60 supports-[backdrop-filter]:bg-[#0B1120]/60 no-print h-16">
+                <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-full flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="bg-blue-500/10 p-1.5 rounded-lg cursor-pointer" onClick={resetToUpload}>
                             <LogoIcon className="h-6 w-6 text-blue-500" />
@@ -575,7 +575,7 @@ const App: React.FC = () => {
             
             <div className="relative z-10 max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
                 <div className="flex flex-col lg:flex-row gap-6 xl:gap-8">
-                    <aside className={`lg:w-80 xl:w-96 flex-shrink-0 no-print ${view !== 'dashboard' && 'hidden lg:block'}`}>
+                    <aside className={`lg:w-80 xl:w-96 flex-shrink-0 no-print lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] ${view !== 'dashboard' && 'hidden lg:block'}`}>
                        <HistoryPanel 
                          history={orderHistory}
                          queue={incomingQueue}

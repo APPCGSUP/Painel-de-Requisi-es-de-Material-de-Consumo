@@ -13,11 +13,11 @@ import UserManagement from './components/UserManagement';
 import { LogoIcon, ErrorIcon, SpinnerIcon, ChartBarIcon, UserGroupIcon, ExclamationTriangleIcon, CheckCircleIcon, HistoryIcon, PencilIcon } from './components/Icons';
 
 const MOCK_USERS: User[] = [
-    { id: 'user1', name: 'Ana Costa', role: 'confirmer' },
-    { id: 'user2', name: 'Bruno Lima', role: 'confirmer' },
-    { id: 'user3', name: 'Carlos Dias', role: 'separator' },
-    { id: 'user4', name: 'Fernanda Souza', role: 'confirmer' },
-    { id: 'user5', name: 'João Silva', role: 'separator' },
+    { id: 'user1', name: 'Charles', role: 'confirmer' },
+    { id: 'user2', name: 'Vicente', role: 'confirmer' },
+    { id: 'user3', name: 'Diego', role: 'separator' },
+    { id: 'user4', name: 'Zé Maria', role: 'confirmer' },
+    { id: 'user5', name: 'Rodrigo', role: 'separator' },
 ];
 
 /**

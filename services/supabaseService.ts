@@ -28,6 +28,74 @@ const mapOrderFromDB = (dbOrder: any, dbItems: any[]): Order => {
 };
 
 export const supabaseService = {
+    async getCurrentUserProfile(): Promise<User | null> {
+        if (!isSupabaseConfigured()) return null;
+
+        const { data: { user } } = await supabase!.auth.getUser();
+        if (!user) return null;
+
+        const { data: profile, error } = await supabase!
+            .from('app_users')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+        
+        if (error) {
+            console.error('Erro ao buscar perfil:', error);
+            return null;
+        }
+
+        return {
+            id: profile.id,
+            name: profile.name,
+            role: profile.role
+        };
+    },
+
+    async signIn(email: string, password: string) {
+        if (!isSupabaseConfigured()) return { data: null, error: { message: "Supabase não configurado" } };
+        return await supabase!.auth.signInWithPassword({ email, password });
+    },
+
+    async signUp(email: string, password: string, name: string, role: 'separator' | 'confirmer') {
+        if (!isSupabaseConfigured()) return { data: null, error: { message: "Supabase não configurado" } };
+        
+        // 1. Criar usuário no Auth
+        const { data, error } = await supabase!.auth.signUp({
+            email,
+            password,
+            options: {
+                data: {
+                    name: name
+                }
+            }
+        });
+
+        if (error) return { data, error };
+
+        if (data.user) {
+            // 2. Criar registro na tabela pública app_users
+            const { error: profileError } = await supabase!
+                .from('app_users')
+                .insert({
+                    id: data.user.id,
+                    name: name,
+                    role: role
+                });
+            
+            if (profileError) {
+                return { data, error: profileError };
+            }
+        }
+
+        return { data, error: null };
+    },
+
+    async signOut() {
+        if (!isSupabaseConfigured()) return;
+        await supabase!.auth.signOut();
+    },
+
     async getUsers(): Promise<User[]> {
         if (!isSupabaseConfigured()) return [];
         

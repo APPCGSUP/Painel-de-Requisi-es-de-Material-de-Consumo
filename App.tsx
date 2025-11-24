@@ -1,15 +1,15 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { Order, User } from './types';
 import { extractOrderDataFromFile } from './services/geminiService';
 import { supabaseService } from './services/supabaseService';
-import { isSupabaseConfigured } from './services/supabaseClient';
+import { isSupabaseConfigured, supabase } from './services/supabaseClient';
 import FileUpload from './components/FileUpload';
 import OrderDashboard from './components/OrderDashboard';
 import HistoryPanel from './components/HistoryPanel';
 import HistoryOrderDetail from './components/HistoryOrderDetail';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import UserManagement from './components/UserManagement';
+import Auth from './components/Auth';
 import { LogoIcon, ErrorIcon, SpinnerIcon, ChartBarIcon, UserGroupIcon, ExclamationTriangleIcon, CheckCircleIcon, HistoryIcon, PencilIcon } from './components/Icons';
 
 const MOCK_USERS: User[] = [
@@ -48,6 +48,10 @@ function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch
 }
 
 const App: React.FC = () => {
+    // Auth State
+    const [session, setSession] = useState<any>(null);
+    const [authLoading, setAuthLoading] = useState(true);
+
     const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
     const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -60,7 +64,7 @@ const App: React.FC = () => {
     // State for App Name Editing
     const [isEditingAppName, setIsEditingAppName] = useState(false);
 
-    // Data states - Now initialized empty, filled via Supabase or LocalStorage fallback
+    // Data states
     const [orderHistory, setOrderHistory] = useState<Order[]>([]);
     const [incomingQueue, setIncomingQueue] = useState<Order[]>([]);
     const [users, setUsers] = useState<User[]>(MOCK_USERS);
@@ -69,11 +73,32 @@ const App: React.FC = () => {
     const [currentUser, setCurrentUser] = usePersistentState<User>('currentUser', MOCK_USERS[4]);
     const [appName, setAppName] = usePersistentState<string>('appName', 'LogiTrack');
 
-    // Initialize Data from Supabase
+    // Auth Initialization
+    useEffect(() => {
+        if (isSupabaseConfigured()) {
+            supabase!.auth.getSession().then(({ data: { session } }) => {
+                setSession(session);
+                setAuthLoading(false);
+            });
+
+            const {
+                data: { subscription },
+            } = supabase!.auth.onAuthStateChange((_event, session) => {
+                setSession(session);
+                setAuthLoading(false);
+            });
+
+            return () => subscription.unsubscribe();
+        } else {
+            setAuthLoading(false);
+        }
+    }, []);
+
+    // Load Data based on Auth State
     useEffect(() => {
         const loadData = async () => {
             if (!isSupabaseConfigured()) {
-                // Fallback to LocalStorage if Supabase Key is missing
+                // Fallback to LocalStorage
                 const storedHistory = localStorage.getItem('orderHistory');
                 const storedQueue = localStorage.getItem('incomingQueue');
                 const storedUsers = localStorage.getItem('users');
@@ -84,44 +109,58 @@ const App: React.FC = () => {
                 return;
             }
 
-            try {
-                setIsLoading(true);
-                const [fetchedOrders, fetchedUsers] = await Promise.all([
-                    supabaseService.getOrders(),
-                    supabaseService.getUsers()
-                ]);
+            if (session) {
+                try {
+                    setIsLoading(true);
+                    
+                    // Identify current user from DB
+                    const myProfile = await supabaseService.getCurrentUserProfile();
+                    if (myProfile) {
+                        setCurrentUser(myProfile);
+                    }
 
-                if (fetchedUsers.length > 0) {
-                    setUsers(fetchedUsers);
+                    const [fetchedOrders, fetchedUsers] = await Promise.all([
+                        supabaseService.getOrders(),
+                        supabaseService.getUsers()
+                    ]);
+
+                    if (fetchedUsers.length > 0) {
+                        setUsers(fetchedUsers);
+                    }
+
+                    const history = fetchedOrders.filter(o => o.status === 'completed' || o.status === 'canceled');
+                    const queue = fetchedOrders.filter(o => o.status === 'picking');
+
+                    setOrderHistory(history);
+                    setIncomingQueue(queue);
+
+                } catch (err) {
+                    console.error("Falha ao carregar dados do Supabase", err);
+                    setError("Erro ao conectar com o banco de dados.");
+                } finally {
+                    setIsLoading(false);
                 }
-
-                // Separate History (Completed/Canceled) from Queue (Picking)
-                const history = fetchedOrders.filter(o => o.status === 'completed' || o.status === 'canceled');
-                const queue = fetchedOrders.filter(o => o.status === 'picking');
-
-                setOrderHistory(history);
-                setIncomingQueue(queue);
-
-            } catch (err) {
-                console.error("Falha ao carregar dados do Supabase", err);
-                setError("Erro ao conectar com o banco de dados.");
-            } finally {
-                setIsLoading(false);
             }
         };
 
-        loadData();
-    }, []);
+        if (!authLoading) {
+            loadData();
+        }
+    }, [session, authLoading]);
 
-    // Refresh helper
     const refreshData = async () => {
-        if (!isSupabaseConfigured()) return; // Local state is updated manually in fallback mode
+        if (!isSupabaseConfigured()) return;
         
         const fetchedOrders = await supabaseService.getOrders();
         const history = fetchedOrders.filter(o => o.status === 'completed' || o.status === 'canceled');
         const queue = fetchedOrders.filter(o => o.status === 'picking');
         setOrderHistory(history);
         setIncomingQueue(queue);
+    };
+
+    const handleLogout = async () => {
+        await supabaseService.signOut();
+        setSession(null);
     };
 
     const handleFileProcess = useCallback(async (file: File) => {
@@ -139,7 +178,6 @@ const App: React.FC = () => {
                     const base64File = (reader.result as string).split(',')[1];
                     const orderData = await extractOrderDataFromFile(base64File, file.type);
                     
-                    // Checks against current in-memory state (which mirrors DB)
                     const existingInHistory = orderHistory.find(o => o.orderId === orderData.orderId);
                     const existingInQueue = incomingQueue.find(o => o.orderId === orderData.orderId);
 
@@ -159,7 +197,6 @@ const App: React.FC = () => {
                             await supabaseService.createOrder(newOrder);
                             await refreshData();
                         } else {
-                            // Local Fallback
                             setIncomingQueue(prev => {
                                 const updated = [...prev, newOrder];
                                 localStorage.setItem('incomingQueue', JSON.stringify(updated));
@@ -253,7 +290,6 @@ const App: React.FC = () => {
                 setIsLoading(false);
             }
         } else {
-            // Local Fallback
             setOrderHistory(prev => {
                 const existingIndex = prev.findIndex(o => o.orderId === finalizedOrder.orderId && o.timestamp === finalizedOrder.timestamp);
                 let updatedHistory;
@@ -266,7 +302,6 @@ const App: React.FC = () => {
                 localStorage.setItem('orderHistory', JSON.stringify(updatedHistory));
                 return updatedHistory;
             });
-            // Remove from queue locally if it was there (though currentOrder usually implies it's active)
             setIncomingQueue(prev => {
                 const updated = prev.filter(o => o.orderId !== finalizedOrder.orderId);
                 localStorage.setItem('incomingQueue', JSON.stringify(updated));
@@ -278,30 +313,13 @@ const App: React.FC = () => {
     };
     
     const handlePromoteOrder = (orderToPromote: Order) => {
-        // Sets local viewing state only. 
-        // In a real multi-user realtime app, we would update status to 'in_progress' in DB.
-        // For this version, we just bring it to the "Active Stage" locally.
         setCurrentOrder(orderToPromote);
         setSelectedHistoryOrder(null);
     };
     
     const handlePersistUsers = async (updatedUsers: User[]) => {
-        // This handler is now slightly complex because UserManagement passes the whole array.
-        // We will optimize by just setting state locally for immediate UI feedback,
-        // but in a real app we should handle add/update per user event.
-        
-        // Since UserManagement component logic sends the whole list, let's just fetch fresh from DB if using Supabase,
-        // but UserManagement needs refactoring to call single saveUser.
-        // For now, we will assume UserManagement component calls this after local modification.
-        
-        // To support the existing UserManagement interface, we need to identify what changed,
-        // or simply iterate and upsert all (inefficient but works for small lists).
-        
-        setUsers(updatedUsers); // Optimistic update
-        
+        setUsers(updatedUsers);
         if (isSupabaseConfigured()) {
-            // Find the new or updated user? 
-            // For simplicity, we will save ALL users to ensure sync.
             for (const u of updatedUsers) {
                 await supabaseService.saveUser(u);
             }
@@ -334,9 +352,6 @@ const App: React.FC = () => {
     const handleContinuePicking = (orderToContinue: Order) => {
         setCurrentOrder({ ...orderToContinue, status: 'picking' });
         setSelectedHistoryOrder(null);
-        // In DB it stays 'completed' until finalized again? 
-        // Or should we update DB to 'picking'? 
-        // Let's keep it simple: It's a local "Reopen". When finalized again, it updates the record.
     };
     
     const handleCancelHistoryOrder = async (orderToCancel: Order) => {
@@ -368,6 +383,22 @@ const App: React.FC = () => {
         setSelectedHistoryOrder(null);
     };
 
+    // --- RENDER CONDITIONS ---
+
+    if (authLoading) {
+         return (
+            <div className="flex flex-col items-center justify-center h-screen bg-[#0B1120]">
+                <SpinnerIcon className="h-10 w-10 text-blue-500 mb-4" />
+                <p className="text-gray-400">Carregando sistema...</p>
+            </div>
+        );
+    }
+
+    // Show Auth Screen if connected to Supabase but not logged in
+    if (isSupabaseConfigured() && !session) {
+        return <Auth onLoginSuccess={() => {}} />;
+    }
+
     const renderMainContent = () => {
         if (isLoading) {
             return (
@@ -382,7 +413,6 @@ const App: React.FC = () => {
             );
         }
 
-        // Duplicate Warning Modal
         if (duplicateCandidate) {
             const { existingOrder } = duplicateCandidate;
             const statusText = existingOrder.status === 'completed' 
@@ -398,36 +428,20 @@ const App: React.FC = () => {
                         </div>
                         <h3 className="text-2xl font-bold text-white mb-2">Pedido Já Existente</h3>
                         <p className="text-gray-400 mb-6">
-                            O pedido <span className="text-white font-mono font-bold">{existingOrder.orderId}</span> já foi importado anteriormente e está com status: <br/>
-                            <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm font-bold border ${
-                                existingOrder.status === 'completed' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
-                                existingOrder.status === 'canceled' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 
-                                'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                            O pedido <span className="text-white font-mono font-bold">{existingOrder.orderId}</span> já foi importado anteriormente.
+                            <span className={`block mt-2 font-bold ${
+                                existingOrder.status === 'completed' ? 'text-green-400' : 
+                                existingOrder.status === 'canceled' ? 'text-red-400' : 'text-blue-400'
                             }`}>
                                 {statusText}
                             </span>
                         </p>
-                        
                         <div className="flex flex-col gap-3">
-                            <button 
-                                onClick={() => handleConfirmDuplicateAction('resume')}
-                                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 transition-colors"
-                            >
-                                <HistoryIcon className="h-5 w-5" />
-                                Continuar Existente
+                            <button onClick={() => handleConfirmDuplicateAction('resume')} className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg flex items-center justify-center gap-2">
+                                <HistoryIcon className="h-5 w-5" /> Continuar Existente
                             </button>
-                            <button 
-                                onClick={() => handleConfirmDuplicateAction('overwrite')}
-                                className="w-full py-3 px-4 bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium rounded-lg transition-colors"
-                            >
-                                Importar como Novo (Fila)
-                            </button>
-                            <button 
-                                onClick={resetToUpload}
-                                className="w-full py-3 px-4 bg-gray-800 text-gray-400 text-sm hover:text-white transition-colors"
-                            >
-                                Cancelar
-                            </button>
+                            <button onClick={() => handleConfirmDuplicateAction('overwrite')} className="w-full py-3 px-4 bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium rounded-lg">Importar como Novo</button>
+                            <button onClick={resetToUpload} className="w-full py-3 px-4 bg-gray-800 text-gray-400 text-sm hover:text-white">Cancelar</button>
                         </div>
                     </div>
                 </div>
@@ -438,93 +452,50 @@ const App: React.FC = () => {
             return (
                 <div className="bg-red-900/20 border border-red-500/50 backdrop-blur-md p-6 rounded-xl shadow-xl max-w-2xl mx-auto mt-10">
                     <div className="flex items-start gap-4">
-                        <div className="bg-red-500/10 p-3 rounded-full">
-                             <ErrorIcon className="h-8 w-8 text-red-500" />
-                        </div>
+                        <div className="bg-red-500/10 p-3 rounded-full"><ErrorIcon className="h-8 w-8 text-red-500" /></div>
                         <div className="flex-1">
                             <h3 className="text-lg font-bold text-red-200 mb-1">Erro</h3>
                             <p className="text-red-300/80 mb-4">{error}</p>
-                            <button 
-                                onClick={resetToUpload} 
-                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-red-900/20"
-                            >
-                                Voltar
-                            </button>
+                            <button onClick={resetToUpload} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg">Voltar</button>
                         </div>
                     </div>
                 </div>
             );
         }
-        if (view === 'users') {
-            return (
-                <UserManagement 
-                    users={users} 
-                    setUsers={handlePersistUsers} 
-                    currentUser={currentUser} 
-                    onSelectUser={setCurrentUser} 
-                    onDeleteUser={handleDeleteUser}
-                />
-            );
-        }
-        if (view === 'analytics') {
-            return <AnalyticsDashboard history={orderHistory} />;
-        }
-        if (selectedHistoryOrder) {
-            return <HistoryOrderDetail 
-                order={selectedHistoryOrder} 
-                onClose={handleCloseHistoryDetail} 
-                onContinuePicking={handleContinuePicking}
-                onCancel={handleCancelHistoryOrder}
-            />;
-        }
-        if (currentOrder) {
-            return <OrderDashboard order={currentOrder} onFinalize={handleFinalizeOrder} currentUser={currentUser} userList={users} />;
-        }
+        if (view === 'users') return <UserManagement users={users} setUsers={handlePersistUsers} currentUser={currentUser} onSelectUser={setCurrentUser} onDeleteUser={handleDeleteUser} />;
+        if (view === 'analytics') return <AnalyticsDashboard history={orderHistory} />;
+        if (selectedHistoryOrder) return <HistoryOrderDetail order={selectedHistoryOrder} onClose={handleCloseHistoryDetail} onContinuePicking={handleContinuePicking} onCancel={handleCancelHistoryOrder} />;
+        if (currentOrder) return <OrderDashboard order={currentOrder} onFinalize={handleFinalizeOrder} currentUser={currentUser} userList={users} />;
         
-        // Default view is upload
         return <FileUpload onFileSelect={handleFileProcess} />;
     };
 
     return (
         <div className="min-h-screen bg-[#0B1120] text-gray-200 selection:bg-blue-500/30 selection:text-blue-200 font-sans">
-            {/* Background ambient glow */}
             <div className="fixed inset-0 z-0 pointer-events-none">
                 <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-900/10 rounded-full blur-[128px]"></div>
                 <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-900/10 rounded-full blur-[128px]"></div>
             </div>
 
-            <header className="sticky top-0 z-50 bg-[#0B1120]/80 backdrop-blur-xl border-b border-gray-800/60 supports-[backdrop-filter]:bg-[#0B1120]/60 no-print h-16">
+            <header className="sticky top-0 z-50 bg-[#0B1120]/80 backdrop-blur-xl border-b border-gray-800/60 h-16">
                 <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-full flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className="bg-blue-500/10 p-1.5 rounded-lg cursor-pointer" onClick={resetToUpload}>
                             <LogoIcon className="h-6 w-6 text-blue-500" />
                         </div>
-                        
                         {isEditingAppName ? (
                             <input 
                                 type="text"
                                 value={appName}
                                 onChange={(e) => setAppName(e.target.value)}
                                 onBlur={() => setIsEditingAppName(false)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') setIsEditingAppName(false);
-                                }}
+                                onKeyDown={(e) => e.key === 'Enter' && setIsEditingAppName(false)}
                                 autoFocus
                                 className="bg-gray-800 text-white text-xl font-bold border border-blue-500 rounded px-2 py-0.5 w-48 outline-none"
                             />
                         ) : (
-                            <div 
-                                className="flex items-center gap-2 group cursor-pointer" 
-                                onClick={() => setIsEditingAppName(true)}
-                                title="Clique para editar o nome"
-                            >
-                                <h1 className="text-xl font-bold tracking-tight text-white">
-                                    {appName === 'LogiTrack' ? (
-                                        <>Logi<span className="text-blue-500">Track</span></>
-                                    ) : (
-                                        appName
-                                    )}
-                                </h1>
+                            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditingAppName(true)}>
+                                <h1 className="text-xl font-bold tracking-tight text-white">{appName === 'LogiTrack' ? <>Logi<span className="text-blue-500">Track</span></> : appName}</h1>
                                 <PencilIcon className="h-3 w-3 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                             </div>
                         )}
@@ -533,41 +504,23 @@ const App: React.FC = () => {
                      <div className="flex items-center gap-3">
                         <div className="hidden md:flex items-center gap-2 mr-4 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
                             <div className={`h-2 w-2 rounded-full ${isSupabaseConfigured() ? 'bg-green-500' : 'bg-orange-500'}`} title={isSupabaseConfigured() ? "Online (Supabase)" : "Offline (Local)"}></div>
-                            <span className="text-xs text-gray-400">Logado como:</span>
+                            <span className="text-xs text-gray-400">Olá,</span>
                             <span className="text-sm font-semibold text-white">{currentUser.name}</span>
+                            {isSupabaseConfigured() && (
+                                <button onClick={handleLogout} className="ml-2 text-xs text-red-400 hover:text-red-300">Sair</button>
+                            )}
                         </div>
 
-                        <button
-                            onClick={() => setView('users')}
-                            className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 border border-transparent
-                                ${view === 'users' 
-                                    ? 'bg-gray-800 text-white border-gray-700' 
-                                    : 'text-gray-400 hover:text-white hover:bg-gray-800/50'}`}
-                        >
-                            <UserGroupIcon className="h-4 w-4" />
-                            <span className="hidden sm:inline">Usuários</span>
+                        <button onClick={() => setView('users')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${view === 'users' ? 'bg-gray-800 text-white border border-gray-700' : 'text-gray-400 hover:bg-gray-800/50'}`}>
+                            <UserGroupIcon className="h-4 w-4" /><span className="hidden sm:inline">Equipe</span>
                         </button>
-
                         {orderHistory.length > 0 && (
-                            <button
-                                onClick={() => setView(view === 'analytics' ? 'dashboard' : 'analytics')}
-                                className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 border border-transparent
-                                    ${view === 'analytics'
-                                        ? 'bg-gray-800 text-white border-gray-700' 
-                                        : 'text-gray-400 hover:text-white hover:bg-gray-800/50'}`}
-                            >
-                                <ChartBarIcon className="h-4 w-4" />
-                                <span className="hidden sm:inline">{view === 'analytics' ? 'Voltar' : 'Relatórios'}</span>
+                            <button onClick={() => setView(view === 'analytics' ? 'dashboard' : 'analytics')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${view === 'analytics' ? 'bg-gray-800 text-white border border-gray-700' : 'text-gray-400 hover:bg-gray-800/50'}`}>
+                                <ChartBarIcon className="h-4 w-4" /><span className="hidden sm:inline">{view === 'analytics' ? 'Voltar' : 'Relatórios'}</span>
                             </button>
                         )}
-                        
                         {(currentOrder || selectedHistoryOrder || view !== 'dashboard') && (
-                            <button
-                                onClick={resetToUpload}
-                                className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-blue-900/20 transition-all hover:shadow-blue-500/20 hover:-translate-y-0.5 active:translate-y-0"
-                            >
-                                Novo Pedido
-                            </button>
+                            <button onClick={resetToUpload} className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg shadow-lg">Novo Pedido</button>
                         )}
                     </div>
                 </div>
@@ -575,18 +528,10 @@ const App: React.FC = () => {
             
             <div className="relative z-10 max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
                 <div className="flex flex-col lg:flex-row gap-6 xl:gap-8">
-                    <aside className={`lg:w-80 xl:w-96 flex-shrink-0 no-print lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] ${view !== 'dashboard' && 'hidden lg:block'}`}>
-                       <HistoryPanel 
-                         history={orderHistory}
-                         queue={incomingQueue}
-                         onSelectOrder={handleSelectHistoryOrder}
-                         onPromoteOrder={handlePromoteOrder}
-                         selectedOrder={selectedHistoryOrder}
-                       />
+                    <aside className={`lg:w-80 xl:w-96 flex-shrink-0 lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] ${view !== 'dashboard' && 'hidden lg:block'}`}>
+                       <HistoryPanel history={orderHistory} queue={incomingQueue} onSelectOrder={handleSelectHistoryOrder} onPromoteOrder={handlePromoteOrder} selectedOrder={selectedHistoryOrder} />
                     </aside>
-                    <main className="flex-1 min-w-0">
-                       {renderMainContent()}
-                    </main>
+                    <main className="flex-1 min-w-0">{renderMainContent()}</main>
                 </div>
             </div>
         </div>

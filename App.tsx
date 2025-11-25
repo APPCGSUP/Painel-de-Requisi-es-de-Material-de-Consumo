@@ -51,6 +51,7 @@ const App: React.FC = () => {
     // Auth State
     const [session, setSession] = useState<any>(null);
     const [authLoading, setAuthLoading] = useState(true);
+    const [isGuestMode, setIsGuestMode] = useState(false);
 
     const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
     const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
@@ -97,7 +98,9 @@ const App: React.FC = () => {
     // Load Data based on Auth State
     useEffect(() => {
         const loadData = async () => {
-            if (!isSupabaseConfigured()) {
+            const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
+
+            if (!shouldUseSupabase) {
                 // Fallback to LocalStorage
                 const storedHistory = localStorage.getItem('orderHistory');
                 const storedQueue = localStorage.getItem('incomingQueue');
@@ -146,10 +149,11 @@ const App: React.FC = () => {
         if (!authLoading) {
             loadData();
         }
-    }, [session, authLoading]);
+    }, [session, authLoading, isGuestMode]);
 
     const refreshData = async () => {
-        if (!isSupabaseConfigured()) return;
+        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
+        if (!shouldUseSupabase) return;
         
         const fetchedOrders = await supabaseService.getOrders();
         const history = fetchedOrders.filter(o => o.status === 'completed' || o.status === 'canceled');
@@ -159,8 +163,12 @@ const App: React.FC = () => {
     };
 
     const handleLogout = async () => {
-        await supabaseService.signOut();
-        setSession(null);
+        if (isGuestMode) {
+            setIsGuestMode(false);
+        } else {
+            await supabaseService.signOut();
+            setSession(null);
+        }
     };
 
     const handleFileProcess = useCallback(async (file: File) => {
@@ -193,7 +201,9 @@ const App: React.FC = () => {
                     } else {
                         const newOrder: Order = { ...orderData, status: 'picking', timestamp: new Date().toISOString() };
                         
-                        if (isSupabaseConfigured()) {
+                        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
+                        
+                        if (shouldUseSupabase) {
                             await supabaseService.createOrder(newOrder);
                             await refreshData();
                         } else {
@@ -207,9 +217,14 @@ const App: React.FC = () => {
                         setIsLoading(false);
                         setView('dashboard');
                     }
-                } catch (e) {
+                } catch (e: any) {
                     console.error(e);
-                    setError('Falha ao processar o arquivo com a IA. Verifique o formato do arquivo e tente novamente.');
+                    // Specific handling for quota errors or general AI failures
+                    if (e.toString().includes('429') || e.message?.includes('429') || e.message?.includes('quota')) {
+                        setError('Cota da API excedida. Por favor, verifique seu plano ou tente novamente mais tarde.');
+                    } else {
+                        setError('Falha ao processar o arquivo com a IA. ' + (e.message || 'Verifique o formato do arquivo.'));
+                    }
                     setIsLoading(false);
                 }
             };
@@ -222,7 +237,7 @@ const App: React.FC = () => {
             setError('Ocorreu um erro inesperado.');
             setIsLoading(false);
         }
-    }, [orderHistory, incomingQueue]);
+    }, [orderHistory, incomingQueue, isGuestMode]);
 
     const handleConfirmDuplicateAction = async (action: 'resume' | 'overwrite') => {
         if (!duplicateCandidate) return;
@@ -232,8 +247,9 @@ const App: React.FC = () => {
             setDuplicateCandidate(null);
         } else {
             const newOrder = duplicateCandidate.newOrder;
+            const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
             
-            if (isSupabaseConfigured()) {
+            if (shouldUseSupabase) {
                 setIsLoading(true);
                 await supabaseService.createOrder(newOrder);
                 await refreshData();
@@ -279,7 +295,9 @@ const App: React.FC = () => {
             completionTimestamp,
         };
 
-        if (isSupabaseConfigured()) {
+        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
+
+        if (shouldUseSupabase) {
             setIsLoading(true);
             try {
                 await supabaseService.updateOrder(finalizedOrder);
@@ -319,7 +337,9 @@ const App: React.FC = () => {
     
     const handlePersistUsers = async (updatedUsers: User[]) => {
         setUsers(updatedUsers);
-        if (isSupabaseConfigured()) {
+        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
+        
+        if (shouldUseSupabase) {
             for (const u of updatedUsers) {
                 await supabaseService.saveUser(u);
             }
@@ -329,7 +349,9 @@ const App: React.FC = () => {
     }
 
     const handleDeleteUser = async (userId: string) => {
-        if (isSupabaseConfigured()) {
+        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
+        
+        if (shouldUseSupabase) {
             await supabaseService.deleteUser(userId);
             const freshUsers = await supabaseService.getUsers();
             setUsers(freshUsers);
@@ -363,7 +385,9 @@ const App: React.FC = () => {
             completionTimestamp: new Date().toISOString()
         };
 
-        if (isSupabaseConfigured()) {
+        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
+
+        if (shouldUseSupabase) {
             setIsLoading(true);
             await supabaseService.updateOrder(canceledOrder);
             await refreshData();
@@ -394,9 +418,9 @@ const App: React.FC = () => {
         );
     }
 
-    // Show Auth Screen if connected to Supabase but not logged in
-    if (isSupabaseConfigured() && !session) {
-        return <Auth onLoginSuccess={() => {}} />;
+    // Show Auth Screen if connected to Supabase but not logged in AND not in Guest Mode
+    if (isSupabaseConfigured() && !session && !isGuestMode) {
+        return <Auth onLoginSuccess={() => {}} onGuestLogin={() => setIsGuestMode(true)} />;
     }
 
     const renderMainContent = () => {
@@ -407,8 +431,8 @@ const App: React.FC = () => {
                         <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"></div>
                         <SpinnerIcon className="relative h-16 w-16 text-blue-400 mb-6" />
                     </div>
-                    <h3 className="text-2xl font-bold text-white mb-2">Sincronizando Dados</h3>
-                    <p className="text-gray-400 max-w-md mx-auto">Processando informações com o servidor...</p>
+                    <h3 className="text-2xl font-bold text-white mb-2">Processando</h3>
+                    <p className="text-gray-400 max-w-md mx-auto">Aguarde enquanto os dados são atualizados...</p>
                 </div>
             );
         }
@@ -470,6 +494,8 @@ const App: React.FC = () => {
         return <FileUpload onFileSelect={handleFileProcess} />;
     };
 
+    const isOnline = isSupabaseConfigured() && !isGuestMode;
+
     return (
         <div className="min-h-screen bg-[#0B1120] text-gray-200 selection:bg-blue-500/30 selection:text-blue-200 font-sans">
             <div className="fixed inset-0 z-0 pointer-events-none">
@@ -503,10 +529,10 @@ const App: React.FC = () => {
                     
                      <div className="flex items-center gap-3">
                         <div className="hidden md:flex items-center gap-2 mr-4 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                            <div className={`h-2 w-2 rounded-full ${isSupabaseConfigured() ? 'bg-green-500' : 'bg-orange-500'}`} title={isSupabaseConfigured() ? "Online (Supabase)" : "Offline (Local)"}></div>
+                            <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-orange-500'}`} title={isOnline ? "Online (Supabase)" : "Offline (Local)"}></div>
                             <span className="text-xs text-gray-400">Olá,</span>
                             <span className="text-sm font-semibold text-white">{currentUser.name}</span>
-                            {isSupabaseConfigured() && (
+                            {(isOnline || isGuestMode) && (
                                 <button onClick={handleLogout} className="ml-2 text-xs text-red-400 hover:text-red-300">Sair</button>
                             )}
                         </div>

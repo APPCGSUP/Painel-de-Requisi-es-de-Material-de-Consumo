@@ -42,7 +42,8 @@ export const supabaseService = {
         
         if (error) {
             console.error('Erro ao buscar perfil:', error);
-            return null;
+            // Fallback for new users if trigger failed or latency
+            return { id: user.id, name: user.user_metadata.name || 'Usuário', role: 'separator' };
         }
 
         return {
@@ -55,6 +56,11 @@ export const supabaseService = {
     async signIn(email: string, password: string) {
         if (!isSupabaseConfigured()) return { data: null, error: { message: "Supabase não configurado" } };
         return await supabase!.auth.signInWithPassword({ email, password });
+    },
+
+    async signInWithOtp(email: string) {
+        if (!isSupabaseConfigured()) return { data: null, error: { message: "Supabase não configurado" } };
+        return await supabase!.auth.signInWithOtp({ email });
     },
 
     async signUp(email: string, password: string, name: string, role: 'separator' | 'confirmer') {
@@ -73,18 +79,19 @@ export const supabaseService = {
 
         if (error) return { data, error };
 
+        // Note: The trigger in SQL should handle creating the app_users record.
+        // We do a manual insert just in case the trigger isn't set up, handling duplicates gracefully.
         if (data.user) {
-            // 2. Criar registro na tabela pública app_users
-            const { error: profileError } = await supabase!
+             const { error: profileError } = await supabase!
                 .from('app_users')
-                .insert({
+                .upsert({
                     id: data.user.id,
                     name: name,
                     role: role
-                });
+                }, { onConflict: 'id' });
             
             if (profileError) {
-                return { data, error: profileError };
+                console.warn("Manual profile creation failed (Trigger might have handled it):", profileError);
             }
         }
 
@@ -105,7 +112,7 @@ export const supabaseService = {
 
         if (error) {
             console.error('Erro ao buscar usuários:', error);
-            throw error;
+            return [];
         }
 
         return data.map((u: any) => ({
@@ -118,11 +125,6 @@ export const supabaseService = {
     async saveUser(user: User): Promise<void> {
         if (!isSupabaseConfigured()) return;
 
-        // Se o ID não for um UUID válido (ex: gerado localmente como 'user1'), 
-        // deixamos o Supabase gerar um novo removendo o ID do payload se for novo insert
-        // ou mantemos se for update de um existente.
-        // Para simplificar, vamos fazer upsert baseado no nome ou tentar usar o ID se for UUID
-        
         const payload = {
             id: user.id.length > 10 ? user.id : undefined, // Tenta usar o ID se parecer um UUID
             name: user.name,
@@ -161,7 +163,7 @@ export const supabaseService = {
 
         if (error) {
             console.error('Erro ao buscar pedidos:', error);
-            throw error;
+            return [];
         }
 
         return orders.map((o: any) => mapOrderFromDB(o, o.items));
@@ -208,7 +210,6 @@ export const supabaseService = {
 
             if (itemsError) {
                 console.error('Erro ao criar itens:', itemsError);
-                // Idealmente faríamos rollback aqui, mas supabse-js básico não tem transação manual simples
                 throw itemsError;
             }
         }
@@ -217,12 +218,6 @@ export const supabaseService = {
     async updateOrder(order: Order): Promise<void> {
         if (!isSupabaseConfigured()) return;
 
-        // Precisamos encontrar o registro interno (UUID) baseado no orderId e timestamp 
-        // ou confiar que a UI passou o objeto atualizado. 
-        // O jeito mais seguro no nosso schema atual (onde orderId pode repetir em datas diferentes)
-        // é usar o update buscando pela chave composta ou assumir que temos o ID se ele viesse do getOrders.
-        // Como nosso Order type não tem o ID interno do banco, vamos buscar pelo ID do pedido + timestamp
-        
         const payload = {
             status: order.status,
             picked_items: order.pickedItems,

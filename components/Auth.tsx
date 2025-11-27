@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { supabaseService } from '../services/supabaseService';
 import { LogoIcon, SpinnerIcon } from './Icons';
@@ -29,13 +30,22 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onGuestLogin }) => {
         try {
             if (authMode === 'login') {
                 const { error } = await supabaseService.signIn(email, password);
-                if (error) throw error;
+                if (error) {
+                    if (error.message.includes('Invalid login')) throw new Error('E-mail ou senha incorretos.');
+                    if (error.message.includes('Email not confirmed')) throw new Error('E-mail não confirmado. Verifique sua caixa de entrada ou contate o administrador.');
+                    throw error;
+                }
                 onLoginSuccess();
             } else if (authMode === 'signup') {
                 if (!name) throw new Error("Nome é obrigatório para cadastro.");
+                if (password.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
+                
                 const { error } = await supabaseService.signUp(email, password, name, role);
                 if (error) throw error;
-                onLoginSuccess();
+                
+                // Auto-login after signup if possible, or show success message
+                setSuccessMsg('Cadastro realizado com sucesso! Você já pode entrar.');
+                setAuthMode('login'); // Switch to login tab automatically
             } else if (authMode === 'magic') {
                 const { error } = await supabaseService.signInWithOtp(email);
                 if (error) throw error;
@@ -154,7 +164,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onGuestLogin }) => {
                         )}
 
                         {error && (
-                            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-400 text-sm flex items-center gap-2">
+                            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-400 text-sm flex items-center gap-2 animate-pulse">
                                 <span className="block w-1.5 h-1.5 rounded-full bg-red-500"></span>
                                 {error}
                             </div>

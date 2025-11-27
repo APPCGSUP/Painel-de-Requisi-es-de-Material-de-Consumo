@@ -1,16 +1,15 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// SEU ID DO PROJETO (Atualizado)
-const PROJECT_ID = '60b6b959-6332-4470-8a33-a07a9c6f8701';
+// SEU ID DO PROJETO
+const PROJECT_ID = 'lrqogpbvaicwnvlfbzjr';
 const SUPABASE_URL = `https://${PROJECT_ID}.supabase.co`;
 
-// Chave fornecida pelo usuário
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_PP0SWUYFCj0W-zeX9xuMIQ_-97HPJkW';
+// Chave fornecida pelo usuário (Anon Public Key)
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxycW9ncGJ2YWljd252bGZiempyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1NDg5ODgsImV4cCI6MjA3OTEyNDk4OH0.WpyY-3JIgfvCVspzct89veguZG0okLUCn5RQT9VJBic';
 
-// Inicializa o cliente apenas se a chave estiver presente
-// Removemos a verificação estrita de 'eyJ' para aceitar o formato fornecido
-export const supabase = (SUPABASE_KEY && SUPABASE_KEY !== 'COLE_SUA_CHAVE_SUPABASE_AQUI')
+// Inicializa o cliente
+export const supabase = (SUPABASE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_KEY) 
   : null;
 

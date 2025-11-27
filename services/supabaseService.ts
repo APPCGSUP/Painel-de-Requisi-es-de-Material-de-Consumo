@@ -34,22 +34,46 @@ export const supabaseService = {
         const { data: { user } } = await supabase!.auth.getUser();
         if (!user) return null;
 
+        // Tenta buscar o perfil existente
         const { data: profile, error } = await supabase!
             .from('app_users')
             .select('*')
             .eq('id', user.id)
-            .single();
+            .maybeSingle(); // Usa maybeSingle para não lançar erro se não encontrar
         
-        if (error) {
-            console.error('Erro ao buscar perfil:', error);
-            // Fallback for new users if trigger failed or latency
-            return { id: user.id, name: user.user_metadata.name || 'Usuário', role: 'separator' };
+        // Se encontrou o perfil, retorna
+        if (profile) {
+            return {
+                id: profile.id,
+                name: profile.name,
+                role: profile.role
+            };
+        }
+
+        // SE NÃO ENCONTROU (Erro ou Trigger falhou): Cria o perfil manualmente agora
+        console.warn('Perfil não encontrado. Criando perfil de fallback para:', user.email);
+        
+        const fallbackName = user.user_metadata.name || user.email?.split('@')[0] || 'Usuário';
+        const fallbackRole = 'separator'; // Role padrão
+
+        const { error: insertError } = await supabase!
+            .from('app_users')
+            .insert({
+                id: user.id,
+                name: fallbackName,
+                role: fallbackRole
+            });
+
+        if (insertError) {
+            console.error('Falha crítica ao criar perfil de fallback:', insertError);
+            // Retorna um objeto temporário para não travar o app, mesmo que falhe ao salvar
+            return { id: user.id, name: fallbackName, role: fallbackRole };
         }
 
         return {
-            id: profile.id,
-            name: profile.name,
-            role: profile.role
+            id: user.id,
+            name: fallbackName,
+            role: fallbackRole
         };
     },
 

@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { Order, User } from './types';
 import { extractOrderDataFromFile } from './services/geminiService';
@@ -419,8 +420,9 @@ const App: React.FC = () => {
     }
 
     // Show Auth Screen if connected to Supabase but not logged in AND not in Guest Mode
+    // Removed Guest Mode toggle from Auth screen, so user is forced to log in.
     if (isSupabaseConfigured() && !session && !isGuestMode) {
-        return <Auth onLoginSuccess={() => {}} onGuestLogin={() => setIsGuestMode(true)} />;
+        return <Auth onLoginSuccess={() => {}} />;
     }
 
     const renderMainContent = () => {
@@ -528,14 +530,23 @@ const App: React.FC = () => {
                     </div>
                     
                      <div className="flex items-center gap-3">
-                        <div className="hidden md:flex items-center gap-2 mr-4 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                            <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-orange-500'}`} title={isOnline ? "Online (Supabase)" : "Offline (Local)"}></div>
-                            <span className="text-xs text-gray-400">Olá,</span>
-                            <span className="text-sm font-semibold text-white">{currentUser.name}</span>
-                            {(isOnline || isGuestMode) && (
-                                <button onClick={handleLogout} className="ml-2 text-xs text-red-400 hover:text-red-300">Sair</button>
-                            )}
+                        <div className={`hidden md:flex items-center gap-2 mr-4 px-3 py-1.5 rounded-lg border ${isOnline ? 'bg-green-500/10 border-green-500/30' : 'bg-orange-500/10 border-orange-500/30'}`}>
+                            <div className={`h-2.5 w-2.5 rounded-full ${isOnline ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-orange-500'}`}></div>
+                            <span className={`text-xs font-bold uppercase tracking-wider ${isOnline ? 'text-green-400' : 'text-orange-400'}`}>
+                                {isOnline ? 'NUVEM • SINCRONIZADO' : 'LOCAL • ISOLADO'}
+                            </span>
                         </div>
+
+                        <div className="flex items-center gap-2 px-2">
+                             <span className="text-xs text-gray-400 hidden sm:inline">Olá,</span>
+                             <span className="text-sm font-semibold text-white">{currentUser.name}</span>
+                        </div>
+                        
+                        {(isOnline || isGuestMode) && (
+                            <button onClick={handleLogout} className="text-xs font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded-lg transition-colors border border-red-500/20">Sair</button>
+                        )}
+
+                        <div className="h-6 w-px bg-gray-700 mx-1"></div>
 
                         <button onClick={() => setView('users')} className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${view === 'users' ? 'bg-gray-800 text-white border border-gray-700' : 'text-gray-400 hover:bg-gray-800/50'}`}>
                             <UserGroupIcon className="h-4 w-4" /><span className="hidden sm:inline">Equipe</span>

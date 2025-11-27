@@ -1,14 +1,17 @@
+
 import { createClient } from '@supabase/supabase-js';
 
-// URL do projeto fornecido pelo usuário
+// SEU ID DO PROJETO (Já configurado)
 const PROJECT_ID = 'lrqogpbvaicwnvlfbzjr';
 const SUPABASE_URL = `https://${PROJECT_ID}.supabase.co`;
 
-// A chave deve vir das variáveis de ambiente por segurança
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+// --- IMPORTANTE: COLE SUA CHAVE 'ANON PUBLIC' ABAIXO ---
+// Se estiver rodando localmente, você pode colar a string direta aqui.
+// Exemplo: const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5c...';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_PP0SWUYFCj0W-zeX9xuMIQ_-97HPJkW';
 
-// Evita erro crítico se a chave não existir. Retorna null se não configurado.
-export const supabase = SUPABASE_KEY 
+// Inicializa o cliente apenas se a chave estiver presente
+export const supabase = (SUPABASE_KEY && SUPABASE_KEY !== 'sb_publishable_PP0SWUYFCj0W-zeX9xuMIQ_-97HPJkW')
   ? createClient(SUPABASE_URL, SUPABASE_KEY) 
   : null;
 

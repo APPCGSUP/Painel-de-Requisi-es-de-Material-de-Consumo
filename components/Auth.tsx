@@ -143,7 +143,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess, onGuestLogin }) => {
                                 <label className="block text-sm font-medium text-gray-300 mb-1">Senha</label>
                                 <input
                                     type="password"
-                                    required={authMode !== 'magic'}
+                                    required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"

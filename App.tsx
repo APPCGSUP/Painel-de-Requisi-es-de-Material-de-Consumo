@@ -84,9 +84,15 @@ const App: React.FC = () => {
 
             const {
                 data: { subscription },
-            } = supabase!.auth.onAuthStateChange((_event, session) => {
+            } = supabase!.auth.onAuthStateChange((event, session) => {
                 setSession(session);
                 setAuthLoading(false);
+                
+                // Tratamento robusto para erro de Refresh Token
+                if ((event as string) === 'TOKEN_REFRESH_ERROR') {
+                    console.warn('Erro ao atualizar token. Forçando logout para segurança.');
+                    handleLogout();
+                }
             });
 
             return () => subscription.unsubscribe();
@@ -108,6 +114,10 @@ const App: React.FC = () => {
                     const myProfile = await supabaseService.getCurrentUserProfile();
                     if (myProfile) {
                         setCurrentUser(myProfile);
+                    } else {
+                        // Se falhar ao pegar o perfil, tenta usar o que está no local storage ou mantém o default,
+                        // mas idealmente deveria forçar uma nova tentativa ou logout se crítico.
+                        console.warn("Perfil não carregado do Supabase, usando local.");
                     }
 
                     const [fetchedOrders, fetchedUsers] = await Promise.all([
@@ -152,6 +162,10 @@ const App: React.FC = () => {
     const handleLogout = async () => {
         await supabaseService.signOut();
         setSession(null);
+        // Limpar dados locais sensíveis ao sair
+        localStorage.removeItem('currentUser');
+        setCurrentUser({ id: 'guest', name: 'Visitante', role: 'viewer' });
+        setView('dashboard');
     };
 
     const handleFileProcess = useCallback(async (file: File) => {

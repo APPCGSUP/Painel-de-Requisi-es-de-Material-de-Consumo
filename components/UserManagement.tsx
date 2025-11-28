@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { User } from '../types';
 import { CheckCircleIcon, XCircleIcon } from './Icons';
@@ -14,7 +15,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [userName, setUserName] = useState('');
-    const [userRole, setUserRole] = useState<'separator' | 'confirmer'>('separator');
+    const [userRole, setUserRole] = useState<'separator' | 'confirmer' | 'viewer'>('separator');
     
     // State for delete confirmation modal
     const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -113,8 +114,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
                             <tr key={user.id} className={`transition-colors ${isCurrent ? 'bg-blue-900/10' : 'hover:bg-gray-700/30'}`}>
                                 <td className="px-6 py-4 font-medium text-white">{user.name}</td>
                                 <td className="px-6 py-4 capitalize">
-                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${user.role === 'separator' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-teal-500/10 text-teal-400 border-teal-500/20'}`}>
-                                        {user.role === 'separator' ? 'Separador' : 'Conferente'}
+                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${
+                                        user.role === 'separator' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 
+                                        user.role === 'confirmer' ? 'bg-teal-500/10 text-teal-400 border-teal-500/20' :
+                                        'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                                    }`}>
+                                        {user.role === 'separator' ? 'Separador' : user.role === 'confirmer' ? 'Conferente' : 'Visualizador'}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
@@ -173,11 +178,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
                                 <select
                                     id="userRole"
                                     value={userRole}
-                                    onChange={e => setUserRole(e.target.value as 'separator' | 'confirmer')}
+                                    onChange={e => setUserRole(e.target.value as 'separator' | 'confirmer' | 'viewer')}
                                     className="block w-full bg-gray-900 border border-gray-600 rounded-lg py-2.5 px-3 text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                                 >
                                     <option value="separator">Separador</option>
                                     <option value="confirmer">Conferente</option>
+                                    <option value="viewer">Visualizador</option>
                                 </select>
                             </div>
                         </div>

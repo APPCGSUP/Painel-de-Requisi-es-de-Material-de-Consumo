@@ -1,3 +1,4 @@
+
 export interface OrderItem {
   itemNo: string;
   code: string;
@@ -25,5 +26,5 @@ export interface Order {
 export interface User {
   id: string;
   name: string;
-  role: 'separator' | 'confirmer';
+  role: 'separator' | 'confirmer' | 'viewer';
 }

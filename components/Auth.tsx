@@ -38,8 +38,9 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
                 if (!name) throw new Error("Nome é obrigatório para cadastro.");
                 if (password.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
                 
-                // Por padrão, cadastramos como 'separator'. A função pode ser alterada na tela "Equipe".
-                const { error } = await supabaseService.signUp(email, password, name, 'separator');
+                // Cadastro simplificado: apenas Nome, Email e Senha. 
+                // O serviço definirá o papel como 'viewer' (Visualizador) automaticamente.
+                const { error } = await supabaseService.signUp(email, password, name);
                 if (error) throw error;
                 
                 setSuccessMsg('Cadastro realizado com sucesso! Tentando login automático...');

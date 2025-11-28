@@ -52,7 +52,6 @@ const App: React.FC = () => {
     // Auth State
     const [session, setSession] = useState<any>(null);
     const [authLoading, setAuthLoading] = useState(true);
-    const [isGuestMode, setIsGuestMode] = useState(false);
 
     const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
     const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
@@ -72,8 +71,8 @@ const App: React.FC = () => {
     const [users, setUsers] = useState<User[]>(MOCK_USERS);
 
     // Preferences
-    const [currentUser, setCurrentUser] = usePersistentState<User>('currentUser', MOCK_USERS[4]);
-    const [appName, setAppName] = usePersistentState<string>('appName', 'LogiTrack');
+    const [currentUser, setCurrentUser] = usePersistentState<User>('currentUser', { id: 'guest', name: 'Visitante', role: 'viewer' });
+    const [appName, setAppName] = usePersistentState<string>('appName', 'Painel de Requisições');
 
     // Auth Initialization
     useEffect(() => {
@@ -99,19 +98,7 @@ const App: React.FC = () => {
     // Load Data based on Auth State
     useEffect(() => {
         const loadData = async () => {
-            const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
-
-            if (!shouldUseSupabase) {
-                // Fallback to LocalStorage
-                const storedHistory = localStorage.getItem('orderHistory');
-                const storedQueue = localStorage.getItem('incomingQueue');
-                const storedUsers = localStorage.getItem('users');
-                
-                if (storedHistory) setOrderHistory(JSON.parse(storedHistory));
-                if (storedQueue) setIncomingQueue(JSON.parse(storedQueue));
-                if (storedUsers) setUsers(JSON.parse(storedUsers));
-                return;
-            }
+            if (!isSupabaseConfigured()) return;
 
             if (session) {
                 try {
@@ -150,11 +137,10 @@ const App: React.FC = () => {
         if (!authLoading) {
             loadData();
         }
-    }, [session, authLoading, isGuestMode]);
+    }, [session, authLoading]);
 
     const refreshData = async () => {
-        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
-        if (!shouldUseSupabase) return;
+        if (!isSupabaseConfigured()) return;
         
         const fetchedOrders = await supabaseService.getOrders();
         const history = fetchedOrders.filter(o => o.status === 'completed' || o.status === 'canceled');
@@ -164,12 +150,8 @@ const App: React.FC = () => {
     };
 
     const handleLogout = async () => {
-        if (isGuestMode) {
-            setIsGuestMode(false);
-        } else {
-            await supabaseService.signOut();
-            setSession(null);
-        }
+        await supabaseService.signOut();
+        setSession(null);
     };
 
     const handleFileProcess = useCallback(async (file: File) => {
@@ -202,17 +184,9 @@ const App: React.FC = () => {
                     } else {
                         const newOrder: Order = { ...orderData, status: 'picking', timestamp: new Date().toISOString() };
                         
-                        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
-                        
-                        if (shouldUseSupabase) {
+                        if (isSupabaseConfigured()) {
                             await supabaseService.createOrder(newOrder);
                             await refreshData();
-                        } else {
-                            setIncomingQueue(prev => {
-                                const updated = [...prev, newOrder];
-                                localStorage.setItem('incomingQueue', JSON.stringify(updated));
-                                return updated;
-                            });
                         }
                         
                         setIsLoading(false);
@@ -238,7 +212,7 @@ const App: React.FC = () => {
             setError('Ocorreu um erro inesperado.');
             setIsLoading(false);
         }
-    }, [orderHistory, incomingQueue, isGuestMode]);
+    }, [orderHistory, incomingQueue]);
 
     const handleConfirmDuplicateAction = async (action: 'resume' | 'overwrite') => {
         if (!duplicateCandidate) return;
@@ -248,19 +222,12 @@ const App: React.FC = () => {
             setDuplicateCandidate(null);
         } else {
             const newOrder = duplicateCandidate.newOrder;
-            const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
             
-            if (shouldUseSupabase) {
+            if (isSupabaseConfigured()) {
                 setIsLoading(true);
                 await supabaseService.createOrder(newOrder);
                 await refreshData();
                 setIsLoading(false);
-            } else {
-                setIncomingQueue(prev => {
-                    const updated = [...prev, newOrder];
-                    localStorage.setItem('incomingQueue', JSON.stringify(updated));
-                    return updated;
-                });
             }
 
             setDuplicateCandidate(null);
@@ -296,9 +263,7 @@ const App: React.FC = () => {
             completionTimestamp,
         };
 
-        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
-
-        if (shouldUseSupabase) {
+        if (isSupabaseConfigured()) {
             setIsLoading(true);
             try {
                 await supabaseService.updateOrder(finalizedOrder);
@@ -308,24 +273,6 @@ const App: React.FC = () => {
             } finally {
                 setIsLoading(false);
             }
-        } else {
-            setOrderHistory(prev => {
-                const existingIndex = prev.findIndex(o => o.orderId === finalizedOrder.orderId && o.timestamp === finalizedOrder.timestamp);
-                let updatedHistory;
-                if (existingIndex >= 0) {
-                    updatedHistory = [...prev];
-                    updatedHistory[existingIndex] = finalizedOrder;
-                } else {
-                    updatedHistory = [finalizedOrder, ...prev];
-                }
-                localStorage.setItem('orderHistory', JSON.stringify(updatedHistory));
-                return updatedHistory;
-            });
-            setIncomingQueue(prev => {
-                const updated = prev.filter(o => o.orderId !== finalizedOrder.orderId);
-                localStorage.setItem('incomingQueue', JSON.stringify(updated));
-                return updated;
-            });
         }
         
         setCurrentOrder(null);
@@ -338,28 +285,18 @@ const App: React.FC = () => {
     
     const handlePersistUsers = async (updatedUsers: User[]) => {
         setUsers(updatedUsers);
-        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
-        
-        if (shouldUseSupabase) {
+        if (isSupabaseConfigured()) {
             for (const u of updatedUsers) {
                 await supabaseService.saveUser(u);
             }
-        } else {
-            localStorage.setItem('users', JSON.stringify(updatedUsers));
         }
     }
 
     const handleDeleteUser = async (userId: string) => {
-        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
-        
-        if (shouldUseSupabase) {
+        if (isSupabaseConfigured()) {
             await supabaseService.deleteUser(userId);
             const freshUsers = await supabaseService.getUsers();
             setUsers(freshUsers);
-        } else {
-            const newUsers = users.filter(u => u.id !== userId);
-            setUsers(newUsers);
-            localStorage.setItem('users', JSON.stringify(newUsers));
         }
     }
     
@@ -386,24 +323,11 @@ const App: React.FC = () => {
             completionTimestamp: new Date().toISOString()
         };
 
-        const shouldUseSupabase = isSupabaseConfigured() && !isGuestMode;
-
-        if (shouldUseSupabase) {
+        if (isSupabaseConfigured()) {
             setIsLoading(true);
             await supabaseService.updateOrder(canceledOrder);
             await refreshData();
             setIsLoading(false);
-        } else {
-            setOrderHistory(prev => {
-                const updated = prev.map(o => {
-                    if (o.orderId === orderToCancel.orderId && o.timestamp === orderToCancel.timestamp) {
-                        return canceledOrder;
-                    }
-                    return o;
-                });
-                localStorage.setItem('orderHistory', JSON.stringify(updated));
-                return updated;
-            });
         }
         setSelectedHistoryOrder(null);
     };
@@ -419,9 +343,8 @@ const App: React.FC = () => {
         );
     }
 
-    // Show Auth Screen if connected to Supabase but not logged in AND not in Guest Mode
-    // Removed Guest Mode toggle from Auth screen, so user is forced to log in.
-    if (isSupabaseConfigured() && !session && !isGuestMode) {
+    // Show Auth Screen if connected to Supabase but not logged in
+    if (isSupabaseConfigured() && !session) {
         return <Auth onLoginSuccess={() => {}} />;
     }
 
@@ -488,7 +411,7 @@ const App: React.FC = () => {
                 </div>
             );
         }
-        if (view === 'users') return <UserManagement users={users} setUsers={handlePersistUsers} currentUser={currentUser} onSelectUser={setCurrentUser} onDeleteUser={handleDeleteUser} />;
+        if (view === 'users') return <UserManagement users={users} setUsers={handlePersistUsers} currentUser={currentUser} onSelectUser={() => {}} onDeleteUser={handleDeleteUser} />;
         if (view === 'analytics') return <AnalyticsDashboard history={orderHistory} />;
         if (selectedHistoryOrder) return <HistoryOrderDetail order={selectedHistoryOrder} onClose={handleCloseHistoryDetail} onContinuePicking={handleContinuePicking} onCancel={handleCancelHistoryOrder} />;
         if (currentOrder) return <OrderDashboard order={currentOrder} onFinalize={handleFinalizeOrder} currentUser={currentUser} userList={users} />;
@@ -496,7 +419,7 @@ const App: React.FC = () => {
         return <FileUpload onFileSelect={handleFileProcess} />;
     };
 
-    const isOnline = isSupabaseConfigured() && !isGuestMode;
+    const isOnline = isSupabaseConfigured();
 
     return (
         <div className="min-h-screen bg-[#0B1120] text-gray-200 selection:bg-blue-500/30 selection:text-blue-200 font-sans">
@@ -519,11 +442,11 @@ const App: React.FC = () => {
                                 onBlur={() => setIsEditingAppName(false)}
                                 onKeyDown={(e) => e.key === 'Enter' && setIsEditingAppName(false)}
                                 autoFocus
-                                className="bg-gray-800 text-white text-xl font-bold border border-blue-500 rounded px-2 py-0.5 w-48 outline-none"
+                                className="bg-gray-800 text-white text-xl font-bold border border-blue-500 rounded px-2 py-0.5 w-64 outline-none"
                             />
                         ) : (
                             <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditingAppName(true)}>
-                                <h1 className="text-xl font-bold tracking-tight text-white">{appName === 'LogiTrack' ? <>Logi<span className="text-blue-500">Track</span></> : appName}</h1>
+                                <h1 className="text-xl font-bold tracking-tight text-white">{appName}</h1>
                                 <PencilIcon className="h-3 w-3 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                             </div>
                         )}
@@ -533,7 +456,7 @@ const App: React.FC = () => {
                         <div className={`hidden md:flex items-center gap-2 mr-4 px-3 py-1.5 rounded-lg border ${isOnline ? 'bg-green-500/10 border-green-500/30' : 'bg-orange-500/10 border-orange-500/30'}`}>
                             <div className={`h-2.5 w-2.5 rounded-full ${isOnline ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-orange-500'}`}></div>
                             <span className={`text-xs font-bold uppercase tracking-wider ${isOnline ? 'text-green-400' : 'text-orange-400'}`}>
-                                {isOnline ? 'NUVEM • SINCRONIZADO' : 'LOCAL • ISOLADO'}
+                                {isOnline ? 'NUVEM • SINCRONIZADO' : 'DESCONECTADO'}
                             </span>
                         </div>
 
@@ -542,9 +465,7 @@ const App: React.FC = () => {
                              <span className="text-sm font-semibold text-white">{currentUser.name}</span>
                         </div>
                         
-                        {(isOnline || isGuestMode) && (
-                            <button onClick={handleLogout} className="text-xs font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded-lg transition-colors border border-red-500/20">Sair</button>
-                        )}
+                        <button onClick={handleLogout} className="text-xs font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 px-3 py-1.5 rounded-lg transition-colors border border-red-500/20">Sair</button>
 
                         <div className="h-6 w-px bg-gray-700 mx-1"></div>
 

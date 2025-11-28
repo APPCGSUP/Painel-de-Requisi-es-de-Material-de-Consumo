@@ -39,9 +39,8 @@ export const supabaseService = {
             .from('app_users')
             .select('*')
             .eq('id', user.id)
-            .maybeSingle(); // Usa maybeSingle para não lançar erro se não encontrar
+            .maybeSingle(); 
         
-        // Se encontrou o perfil, retorna
         if (profile) {
             return {
                 id: profile.id,
@@ -50,11 +49,11 @@ export const supabaseService = {
             };
         }
 
-        // SE NÃO ENCONTROU (Erro ou Trigger falhou): Cria o perfil manualmente agora
-        console.warn('Perfil não encontrado. Criando perfil de fallback para:', user.email);
+        // Fallback: Cria perfil de Visualizador (Viewer) se não existir
+        console.warn('Perfil não encontrado. Criando perfil de fallback (Viewer) para:', user.email);
         
-        const fallbackName = user.user_metadata.name || user.email?.split('@')[0] || 'Usuário';
-        const fallbackRole = 'separator'; // Role padrão
+        const fallbackName = user.user_metadata.name || user.email?.split('@')[0] || 'Visualizador';
+        const fallbackRole = 'viewer'; 
 
         const { error: insertError } = await supabase!
             .from('app_users')
@@ -66,7 +65,6 @@ export const supabaseService = {
 
         if (insertError) {
             console.error('Falha crítica ao criar perfil de fallback:', insertError);
-            // Retorna um objeto temporário para não travar o app, mesmo que falhe ao salvar
             return { id: user.id, name: fallbackName, role: fallbackRole };
         }
 
@@ -82,12 +80,7 @@ export const supabaseService = {
         return await supabase!.auth.signInWithPassword({ email, password });
     },
 
-    async signInWithOtp(email: string) {
-        if (!isSupabaseConfigured()) return { data: null, error: { message: "Supabase não configurado" } };
-        return await supabase!.auth.signInWithOtp({ email });
-    },
-
-    async signUp(email: string, password: string, name: string, role: 'separator' | 'confirmer') {
+    async signUp(email: string, password: string, name: string) {
         if (!isSupabaseConfigured()) return { data: null, error: { message: "Supabase não configurado" } };
         
         // 1. Criar usuário no Auth
@@ -103,19 +96,18 @@ export const supabaseService = {
 
         if (error) return { data, error };
 
-        // Note: The trigger in SQL should handle creating the app_users record.
-        // We do a manual insert just in case the trigger isn't set up, handling duplicates gracefully.
+        // 2. Garantir que o perfil 'app_users' seja criado como VIEWER
         if (data.user) {
              const { error: profileError } = await supabase!
                 .from('app_users')
                 .upsert({
                     id: data.user.id,
                     name: name,
-                    role: role
+                    role: 'viewer' // Todo cadastro via tela de login é apenas visualizador
                 }, { onConflict: 'id' });
             
             if (profileError) {
-                console.warn("Manual profile creation failed (Trigger might have handled it):", profileError);
+                console.warn("Erro ao criar perfil de visualizador:", profileError);
             }
         }
 
@@ -127,20 +119,23 @@ export const supabaseService = {
         await supabase!.auth.signOut();
     },
 
+    // Retorna APENAS a equipe operacional (Separadores e Conferentes)
+    // Exclui os 'viewers' (usuários de login)
     async getUsers(): Promise<User[]> {
         if (!isSupabaseConfigured()) return [];
         
         const { data, error } = await supabase!
             .from('app_users')
-            .select('*');
+            .select('*')
+            .in('role', ['separator', 'confirmer']); // Filtra apenas equipe operacional
 
         if (error) {
-            console.error('Erro ao buscar usuários:', error);
+            console.error('Erro ao buscar equipe:', error);
             return [];
         }
 
         return data.map((u: any) => ({
-            id: u.id, // UUID do supabase
+            id: u.id, 
             name: u.name,
             role: u.role
         }));
@@ -150,7 +145,7 @@ export const supabaseService = {
         if (!isSupabaseConfigured()) return;
 
         const payload = {
-            id: user.id.length > 10 ? user.id : undefined, // Tenta usar o ID se parecer um UUID
+            id: user.id.length > 10 ? user.id : undefined,
             name: user.name,
             role: user.role
         };
@@ -176,7 +171,6 @@ export const supabaseService = {
     async getOrders(): Promise<Order[]> {
         if (!isSupabaseConfigured()) return [];
 
-        // Busca pedidos e seus itens relacionados
         const { data: orders, error } = await supabase!
             .from('orders')
             .select(`
@@ -196,7 +190,6 @@ export const supabaseService = {
     async createOrder(order: Order): Promise<void> {
         if (!isSupabaseConfigured()) return;
 
-        // 1. Inserir Cabeçalho do Pedido
         const { data: newOrderData, error: orderError } = await supabase!
             .from('orders')
             .insert({
@@ -206,7 +199,6 @@ export const supabaseService = {
                 status: order.status,
                 timestamp: order.timestamp,
                 picked_items: order.pickedItems || [],
-                // separator_name e confirmer_name são nulos na criação
             })
             .select()
             .single();
@@ -216,10 +208,9 @@ export const supabaseService = {
             throw orderError;
         }
 
-        // 2. Preparar e Inserir Itens
         if (order.items && order.items.length > 0) {
             const itemsPayload = order.items.map(item => ({
-                order_record_id: newOrderData.id, // Chave estrangeira gerada pelo banco
+                order_record_id: newOrderData.id,
                 item_no: item.itemNo,
                 code: item.code,
                 description: item.description,

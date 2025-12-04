@@ -7,11 +7,10 @@ interface UserManagementProps {
     users: User[];
     setUsers: (users: User[]) => void;
     currentUser: User;
-    onSelectUser?: (user: User) => void;
     onDeleteUser?: (userId: string) => void;
 }
 
-const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, currentUser, onSelectUser, onDeleteUser }) => {
+const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, currentUser, onDeleteUser }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [userName, setUserName] = useState('');
@@ -45,10 +44,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
         if (editingUser) {
             // Edit user
             updatedUsers = users.map(u => u.id === editingUser.id ? { ...u, name: userName, role: userRole } : u);
-            // Update current user if we edited ourselves
-            if (currentUser.id === editingUser.id && onSelectUser) {
-                onSelectUser({ ...editingUser, name: userName, role: userRole });
-            }
         } else {
             // Add new user
             const newUser: User = {
@@ -88,7 +83,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-100">Gerenciamento de Usuários</h2>
-                    <p className="text-sm text-gray-400 mt-1">Gerencie a equipe e alterne o perfil ativo.</p>
+                    <p className="text-sm text-gray-400 mt-1">Gerencie a equipe operacional (Separadores e Conferentes).</p>
                 </div>
                 <button
                     onClick={() => handleOpenModal()}
@@ -123,20 +118,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                    {isCurrent ? (
-                                        <span className="flex items-center gap-1.5 text-green-400 text-xs font-bold uppercase tracking-wider">
-                                            <CheckCircleIcon className="h-4 w-4" /> Ativo
-                                        </span>
-                                    ) : (
-                                        onSelectUser && (
-                                            <button 
-                                                onClick={() => onSelectUser(user)}
-                                                className="text-xs font-medium text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded border border-gray-700 transition-all"
-                                            >
-                                                Usar Perfil
-                                            </button>
-                                        )
-                                    )}
+                                    <span className="flex items-center gap-1.5 text-gray-500 text-xs font-bold uppercase tracking-wider opacity-50">
+                                         Offline
+                                    </span>
                                 </td>
                                 <td className="px-6 py-4 text-right space-x-4">
                                     <button onClick={() => handleOpenModal(user)} className="font-medium text-blue-400 hover:text-blue-300 hover:underline transition-colors">Editar</button>
@@ -183,7 +167,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
                                 >
                                     <option value="separator">Separador</option>
                                     <option value="confirmer">Conferente</option>
-                                    <option value="viewer">Visualizador</option>
                                 </select>
                             </div>
                         </div>

@@ -112,12 +112,18 @@ const App: React.FC = () => {
                     
                     // Identify current user from DB
                     const myProfile = await supabaseService.getCurrentUserProfile();
+                    
                     if (myProfile) {
                         setCurrentUser(myProfile);
-                    } else {
-                        // Se falhar ao pegar o perfil, tenta usar o que está no local storage ou mantém o default,
-                        // mas idealmente deveria forçar uma nova tentativa ou logout se crítico.
-                        console.warn("Perfil não carregado do Supabase, usando local.");
+                    } else if (session.user) {
+                        // Fallback crítico: se o perfil não for encontrado, usa os dados da sessão
+                        // para garantir que o nome não fique "preso" no valor antigo do localStorage
+                        const fallbackUser: User = {
+                            id: session.user.id,
+                            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
+                            role: 'viewer'
+                        };
+                        setCurrentUser(fallbackUser);
                     }
 
                     const [fetchedOrders, fetchedUsers] = await Promise.all([
@@ -413,19 +419,20 @@ const App: React.FC = () => {
 
         if (error) {
             return (
-                <div className="bg-red-900/20 border border-red-500/50 backdrop-blur-md p-6 rounded-xl shadow-xl max-w-2xl mx-auto mt-10">
-                    <div className="flex items-start gap-4">
-                        <div className="bg-red-500/10 p-3 rounded-full"><ErrorIcon className="h-8 w-8 text-red-500" /></div>
-                        <div className="flex-1">
-                            <h3 className="text-lg font-bold text-red-200 mb-1">Erro</h3>
-                            <p className="text-red-300/80 mb-4">{error}</p>
-                            <button onClick={resetToUpload} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg">Voltar</button>
+                <div className="flex items-center justify-center h-full min-h-[400px] animate-fade-in">
+                    <div className="bg-red-900/20 border border-red-500/30 backdrop-blur-md p-8 rounded-2xl shadow-2xl max-w-lg w-full text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-red-500"></div>
+                        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <ErrorIcon className="h-8 w-8 text-red-500" />
                         </div>
+                        <h3 className="text-xl font-bold text-white mb-2">Erro</h3>
+                        <p className="text-red-200/80 mb-6">{error}</p>
+                        <button onClick={resetToUpload} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow-lg transition-colors w-full">Voltar</button>
                     </div>
                 </div>
             );
         }
-        if (view === 'users') return <UserManagement users={users} setUsers={handlePersistUsers} currentUser={currentUser} onSelectUser={() => {}} onDeleteUser={handleDeleteUser} />;
+        if (view === 'users') return <UserManagement users={users} setUsers={handlePersistUsers} currentUser={currentUser} onDeleteUser={handleDeleteUser} />;
         if (view === 'analytics') return <AnalyticsDashboard history={orderHistory} />;
         if (selectedHistoryOrder) return <HistoryOrderDetail order={selectedHistoryOrder} onClose={handleCloseHistoryDetail} onContinuePicking={handleContinuePicking} onCancel={handleCancelHistoryOrder} />;
         if (currentOrder) return <OrderDashboard order={currentOrder} onFinalize={handleFinalizeOrder} currentUser={currentUser} userList={users} />;
